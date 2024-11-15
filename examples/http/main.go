@@ -180,7 +180,7 @@ func main() {
 	)
 
 	flagset := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-	flagset.StringVar(&insecureListenAddress, "insecure-listen-address", "", "The address the prom-label-proxy HTTP server should listen on.")
+	flagset.StringVar(&insecureListenAddress, "insecure-listen-address", "", "The address the proxy HTTP server should listen on.")
 	flagset.StringVar(&upstream, "upstream", "", "The upstream URL to proxy to.")
 	flagset.BoolVar(&enableJitter, "enable-jitter", false, "Use the jitter middleware")
 	flagset.DurationVar(&jitterDelay, "jitter-delay", time.Second, "Random jitter to apply when enabled")
@@ -211,11 +211,13 @@ func main() {
 	)
 
 	cfg := proxymw.Config{
-		EnableBackpressure:        enableBackpressure,
-		BackpressureMonitoringURL: backpressureMonitoringURL,
-		BackpressureQueries:       strings.Split(backpressureQueries, "\n"),
-		CongestionWindowMin:       congestionWindowMin,
-		CongestionWindowMax:       congestionWindowMax,
+		BackpressureConfig: proxymw.BackpressureConfig{
+			EnableBackpressure:        enableBackpressure,
+			BackpressureMonitoringURL: backpressureMonitoringURL,
+			BackpressureQueries:       strings.Split(backpressureQueries, "\n"),
+			CongestionWindowMin:       congestionWindowMin,
+			CongestionWindowMax:       congestionWindowMax,
+		},
 
 		EnableJitter: enableJitter,
 		JitterDelay:  jitterDelay,
@@ -241,7 +243,10 @@ func main() {
 			log.Fatalf("Failed to listen on insecure address: %v", err)
 		}
 
-		srv := &http.Server{Handler: mux}
+		srv := &http.Server{
+			Handler:      mux,
+			WriteTimeout: time.Second,
+		}
 
 		g.Add(func() error {
 			log.Printf("Listening insecurely on %v", l.Addr())
