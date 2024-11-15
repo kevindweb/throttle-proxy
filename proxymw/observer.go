@@ -1,6 +1,7 @@
 package proxymw
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -9,10 +10,10 @@ import (
 )
 
 const (
-	errCountMetric   = "querymw_error_count"
-	blockCountMetric = "querymw_block_count"
-	reqCountMetric   = "querymw_request_count"
-	latencyMetric    = "querymw_request_latency_ms"
+	errCountMetric   = "proxymw_error_count"
+	blockCountMetric = "proxymw_block_count"
+	reqCountMetric   = "proxymw_request_count"
+	latencyMetric    = "proxymw_request_latency_ms"
 )
 
 // Observer emits metrics such as error rate and how often queriers are blocking requests.
@@ -44,6 +45,10 @@ func NewObserver(querier ProxyClient, reg *prometheus.Registry) *Observer {
 
 	reg.MustRegister(o.errCounter, o.blockCounter, o.reqCounter, o.latencyCounter)
 	return o
+}
+
+func (o *Observer) Init(ctx context.Context) {
+	o.client.Init(ctx)
 }
 
 func (o *Observer) ServeHTTP(w http.ResponseWriter, r *http.Request) error {

@@ -1,0 +1,54 @@
+run:
+  timeout: 5m
+  concurrency: 4
+
+linters:
+  enable:
+    - bodyclose
+    - durationcheck # checks for two durations multiplied together
+    - copyloopvar # Unpinned variables
+    - goconst # finds repeated strings that could be replaced by a constant
+    - gocognit # computes and checks the cognitive complexity of functions
+    - gofmt
+    - goimports
+    - gomoddirectives # manages the use of 'replace', 'retract', and 'excludes' directives in go.mod
+    - gosimple
+    - govet # runs additional go vet checks
+    - ineffassign
+    - misspell
+    - nakedret # finds naked returns in functions greater than a specified function length
+    - nestif # reports deeply nested if statements
+    - nilerr # finds the code that returns nil even if it checks that the error is not nil
+    - paralleltest
+    - rowserrcheck # checks whether Err of rows is checked successfully
+    - spancheck # checks usage and closure of tracing spans
+    - staticcheck
+    - sqlclosecheck # checks that sql.Rows and sql.Stmt are closed
+    - unconvert # removes unnecessary type conversions
+    - usestdlibvars # detects the possibility to use variables/constants from the Go standard library
+    - unparam # reports unused function parameters
+    - unused
+    - whitespace # detects leading and trailing whitespace
+
+  presets:
+    - performance
+
+linters-settings:
+  paralleltest:
+    # Ignore missing calls to `t.Parallel()` and only report incorrect uses of it.
+    ignore-missing: true
+
+  govet:
+    # These govet checks are disabled by default, but they're useful.
+    enable:
+      - reflectvaluecompare
+      - sortslice
+      - unusedwrite
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude:
+    - SA1019
