@@ -12,7 +12,7 @@ var (
 	ErrCongestionWindowMaxBelowMin = errors.New("backpressure max window <= min window")
 	ErrRegistryRequired            = errors.New("prometheus registry is required when observer is enabled")
 
-	ErrBackpressureBackoff = BlockErr(BackpressureQuerierType, "congestion window closed, backoff from backpressure")
+	ErrBackpressureBackoff = BlockErr(BackpressureProxyType, "congestion window closed, backoff from backpressure")
 )
 
 type RequestBlockedError struct {

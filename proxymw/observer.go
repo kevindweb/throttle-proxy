@@ -1,6 +1,7 @@
 package proxymw
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -44,6 +45,10 @@ func NewObserver(querier ProxyClient, reg *prometheus.Registry) *Observer {
 
 	reg.MustRegister(o.errCounter, o.blockCounter, o.reqCounter, o.latencyCounter)
 	return o
+}
+
+func (o *Observer) Init(ctx context.Context) {
+	o.client.Init(ctx)
 }
 
 func (o *Observer) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
