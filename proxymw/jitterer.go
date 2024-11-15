@@ -1,6 +1,7 @@
 package proxymw
 
 import (
+	"context"
 	"math/rand"
 	"net/http"
 	"time"
@@ -19,6 +20,10 @@ func NewJitterer(querier ProxyClient, delay time.Duration) *Jitterer {
 		delay:  delay,
 		client: querier,
 	}
+}
+
+func (j *Jitterer) Init(ctx context.Context) {
+	j.client.Init(ctx)
 }
 
 func (j *Jitterer) ServeHTTP(w http.ResponseWriter, r *http.Request) error {

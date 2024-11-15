@@ -1,28 +1,24 @@
 package proxymw
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql/parser"
 )
 
 type ProxyClient interface {
+	Init(context.Context)
 	ServeHTTP(http.ResponseWriter, *http.Request) error
 }
 
 type Config struct {
-	EnableBackpressure        bool
-	BackpressureMonitoringURL string
-	BackpressureQueries       []string
-	CongestionWindowMin       int
-	CongestionWindowMax       int
+	BackpressureConfig
 
 	EnableJitter bool
 	JitterDelay  time.Duration
@@ -32,30 +28,14 @@ type Config struct {
 }
 
 func (c Config) Validate() error {
-	if c.EnableJitter && c.JitterDelay == 0 {
-		return ErrJitterDelayRequired
-	}
-
 	if c.EnableBackpressure {
-		if len(c.BackpressureQueries) == 0 {
-			return ErrBackpressureQueryRequired
-		}
-		for _, q := range c.BackpressureQueries {
-			if _, err := parser.ParseExpr(q); err != nil {
-				return err
-			}
-		}
-
-		if _, err := url.Parse(c.BackpressureMonitoringURL); err != nil {
+		if err := c.BackpressureConfig.Validate(); err != nil {
 			return err
 		}
+	}
 
-		if c.CongestionWindowMin < 1 {
-			return ErrCongestionWindowMinBelowOne
-		}
-		if c.CongestionWindowMax < c.CongestionWindowMin {
-			return ErrCongestionWindowMaxBelowMin
-		}
+	if c.EnableJitter && c.JitterDelay == 0 {
+		return ErrJitterDelayRequired
 	}
 
 	if c.EnableObserver && c.ObserverRegistry == nil {
@@ -108,9 +88,9 @@ type Entry struct {
 	client ProxyClient
 }
 
-func (t *Entry) Proxy() http.Handler {
+func (e *Entry) Proxy() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		err := t.client.ServeHTTP(w, r)
+		err := e.client.ServeHTTP(w, r)
 		if err == nil {
 			return
 		}
@@ -124,12 +104,18 @@ func (t *Entry) Proxy() http.Handler {
 	})
 }
 
+func (e *Entry) Init(ctx context.Context) {
+	e.client.Init(ctx)
+}
+
 type Exit struct {
 	next http.HandlerFunc
 }
 
-func (t *Exit) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
-	t.next.ServeHTTP(w, r)
+func (e *Exit) Init(_ context.Context) {}
+
+func (e *Exit) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
+	e.next.ServeHTTP(w, r)
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package proxymw
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,10 +9,12 @@ import (
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/prometheus/prometheus/promql/parser"
 )
 
 const (
-	BackpressureQuerierType = "ai_md"
+	BackpressureProxyType = "backpressure"
 
 	BackpressureUpdateCadence = time.Minute
 
@@ -44,10 +47,44 @@ type Backpressure struct {
 	client ProxyClient
 }
 
+type BackpressureConfig struct {
+	EnableBackpressure        bool
+	BackpressureMonitoringURL string
+	BackpressureQueries       []string
+	CongestionWindowMin       int
+	CongestionWindowMax       int
+}
+
+func (c BackpressureConfig) Validate() error {
+	if len(c.BackpressureQueries) == 0 {
+		return ErrBackpressureQueryRequired
+	}
+
+	for _, q := range c.BackpressureQueries {
+		if _, err := parser.ParseExpr(q); err != nil {
+			return err
+		}
+	}
+
+	if _, err := url.Parse(c.BackpressureMonitoringURL); err != nil {
+		return err
+	}
+
+	if c.CongestionWindowMin < 1 {
+		return ErrCongestionWindowMinBelowOne
+	}
+
+	if c.CongestionWindowMax < c.CongestionWindowMin {
+		return ErrCongestionWindowMaxBelowMin
+	}
+
+	return nil
+}
+
 var _ ProxyClient = &Backpressure{}
 
 func NewBackpressure(querier ProxyClient, minWindow, maxWindow int, queries []string, monitorURL string) *Backpressure {
-	bp := &Backpressure{
+	return &Backpressure{
 		mu:        sync.Mutex{},
 		watermark: minWindow,
 		min:       minWindow,
@@ -62,23 +99,23 @@ func NewBackpressure(querier ProxyClient, minWindow, maxWindow int, queries []st
 
 		client: querier,
 	}
-	bp.metricsLoop()
-	return bp
 }
 
 // metricsLoop creates a goroutine for each backpressure signal to avoid one slow query from
 // preventing the other signals from actioning the congestion window.
-func (bp *Backpressure) metricsLoop() {
+func (bp *Backpressure) metricsLoop(ctx context.Context) {
 	for _, q := range bp.queries {
-		go bp.metricLoop(q)
+		go bp.metricLoop(ctx, q)
 	}
 }
 
 // metricLoop pulls one PromQL metric on a loop to update whether requests should be throttled.
 // we only drop the global throttle when all metrics have dropped their own throttle flag
-func (bp *Backpressure) metricLoop(q string) {
+func (bp *Backpressure) metricLoop(ctx context.Context, q string) {
 	for {
-		queryFired, err := bp.metricFired(q)
+		time.Sleep(BackpressureUpdateCadence)
+
+		queryFired, err := bp.metricFired(ctx, q)
 		if err != nil {
 			log.Printf("querying metric '%s' returned error: %v", q, err)
 			continue
@@ -98,7 +135,7 @@ func (bp *Backpressure) metricLoop(q string) {
 }
 
 // queryMetric checks if the PromQL expression returns a non-empty response (backpressure is firing)
-func (bp *Backpressure) metricFired(query string) (bool, error) {
+func (bp *Backpressure) metricFired(ctx context.Context, query string) (bool, error) {
 	u, err := url.Parse(bp.monitorURL)
 	if err != nil {
 		return false, err
@@ -108,7 +145,12 @@ func (bp *Backpressure) metricFired(query string) (bool, error) {
 	q.Set("query", query)
 	u.RawQuery = q.Encode()
 
-	resp, err := bp.monitorClient.Get(u.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return false, err
+	}
+
+	resp, err := bp.monitorClient.Do(req)
 	if err != nil {
 		return false, err
 	}
@@ -130,6 +172,11 @@ func (bp *Backpressure) metricFired(query string) (bool, error) {
 	}
 
 	return len(prometheusResp.Data.Result) > 0, nil
+}
+
+func (bp *Backpressure) Init(ctx context.Context) {
+	bp.metricsLoop(ctx)
+	bp.client.Init(ctx)
 }
 
 func (bp *Backpressure) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
