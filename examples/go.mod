@@ -4,7 +4,7 @@ go 1.23.3
 
 require (
 	github.com/efficientgo/core v1.0.0-rc.3
-	github.com/kevindweb/throttle-proxy v0.0.1
+	github.com/kevindweb/throttle-proxy v0.0.2
 	github.com/metalmatze/signal v0.0.0-20210307161603-1c9aa721a97a
 	github.com/oklog/run v1.1.0
 )
