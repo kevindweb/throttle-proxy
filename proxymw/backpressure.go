@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/prometheus/promql/parser"
@@ -20,6 +21,16 @@ const (
 
 	MonitorQueryTimeout = 10 * time.Second
 )
+
+// PrometheusResponse represents the structure of Prometheus query responses
+type PrometheusResponse struct {
+	Data struct {
+		Result []struct {
+			Metric map[string]string `json:"metric"`
+			Value  [2]interface{}    `json:"value"`
+		} `json:"result"`
+	} `json:"data"`
+}
 
 // Backpressure uses Additive Increase Multiplicative Decrease which
 // is a congestion control algorithm to back off of expensive queries and is modeled after TCP's
@@ -41,8 +52,8 @@ type Backpressure struct {
 	monitorClient *http.Client
 	monitorURL    string
 	queries       []string
-	throttleFlags map[string]bool
-	throttle      bool
+	throttleFlags sync.Map
+	throttle      atomic.Bool
 
 	client ProxyClient
 }
@@ -56,18 +67,22 @@ type BackpressureConfig struct {
 }
 
 func (c BackpressureConfig) Validate() error {
+	if !c.EnableBackpressure {
+		return nil
+	}
+
 	if len(c.BackpressureQueries) == 0 {
 		return ErrBackpressureQueryRequired
 	}
 
 	for _, q := range c.BackpressureQueries {
 		if _, err := parser.ParseExpr(q); err != nil {
-			return err
+			return fmt.Errorf("invalid PromQL query %q: %w", q, err)
 		}
 	}
 
 	if _, err := url.Parse(c.BackpressureMonitoringURL); err != nil {
-		return err
+		return fmt.Errorf("invalid monitoring URL: %w", err)
 	}
 
 	if c.CongestionWindowMin < 1 {
@@ -85,19 +100,19 @@ var _ ProxyClient = &Backpressure{}
 
 func NewBackpressure(querier ProxyClient, minWindow, maxWindow int, queries []string, monitorURL string) *Backpressure {
 	return &Backpressure{
-		mu:        sync.Mutex{},
 		watermark: minWindow,
 		min:       minWindow,
 		max:       maxWindow,
-		active:    0,
-
-		monitorClient: &http.Client{Timeout: MonitorQueryTimeout},
-		monitorURL:    monitorURL,
-		queries:       queries,
-		throttleFlags: map[string]bool{},
-		throttle:      false,
-
-		client: querier,
+		monitorClient: &http.Client{
+			Timeout: MonitorQueryTimeout,
+			Transport: &http.Transport{
+				MaxIdleConns:    100,
+				IdleConnTimeout: 90 * time.Second,
+			},
+		},
+		monitorURL: monitorURL,
+		queries:    queries,
+		client:     querier,
 	}
 }
 
@@ -105,32 +120,42 @@ func NewBackpressure(querier ProxyClient, minWindow, maxWindow int, queries []st
 // preventing the other signals from actioning the congestion window.
 func (bp *Backpressure) metricsLoop(ctx context.Context) {
 	for _, q := range bp.queries {
-		go bp.metricLoop(ctx, q)
+		go func(query string) {
+			bp.metricLoop(ctx, query)
+		}(q)
 	}
 }
 
 // metricLoop pulls one PromQL metric on a loop to update whether requests should be throttled.
 // we only drop the global throttle when all metrics have dropped their own throttle flag
-func (bp *Backpressure) metricLoop(ctx context.Context, q string) {
+func (bp *Backpressure) metricLoop(ctx context.Context, query string) {
+	ticker := time.NewTicker(BackpressureUpdateCadence)
+	defer ticker.Stop()
+
 	for {
-		time.Sleep(BackpressureUpdateCadence)
-
-		queryFired, err := bp.metricFired(ctx, q)
-		if err != nil {
-			log.Printf("querying metric '%s' returned error: %v", q, err)
-			continue
-		}
-
-		bp.mu.Lock()
-		bp.throttleFlags[q] = queryFired
-		throttle := false
-		for _, toThrottle := range bp.throttleFlags {
-			if toThrottle {
-				throttle = true
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			queryFired, err := bp.metricFired(ctx, query)
+			if err != nil {
+				log.Printf("querying metric '%s' returned error: %v", query, err)
+				continue
 			}
+
+			bp.throttleFlags.Store(query, queryFired)
+
+			throttle := false
+			bp.throttleFlags.Range(func(_, value interface{}) bool {
+				if value.(bool) {
+					throttle = true
+					return false
+				}
+				return true
+			})
+
+			bp.throttle.Store(throttle)
 		}
-		bp.throttle = throttle
-		bp.mu.Unlock()
 	}
 }
 
@@ -138,7 +163,7 @@ func (bp *Backpressure) metricLoop(ctx context.Context, q string) {
 func (bp *Backpressure) metricFired(ctx context.Context, query string) (bool, error) {
 	u, err := url.Parse(bp.monitorURL)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("parse monitor URL: %w", err)
 	}
 
 	q := u.Query()
@@ -147,28 +172,22 @@ func (bp *Backpressure) metricFired(ctx context.Context, query string) (bool, er
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("create request: %w", err)
 	}
 
 	resp, err := bp.monitorClient.Do(req)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("execute request: %w", err)
 	}
-
 	defer resp.Body.Close()
 
-	type PrometheusResponse struct {
-		Data struct {
-			Result []struct {
-				Metric map[string]string `json:"metric"`
-				Value  [2]interface{}    `json:"value"`
-			} `json:"result"`
-		} `json:"data"`
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	var prometheusResp PrometheusResponse
 	if err := json.NewDecoder(resp.Body).Decode(&prometheusResp); err != nil {
-		return false, fmt.Errorf("error decoding JSON response: %w", err)
+		return false, fmt.Errorf("decode response: %w", err)
 	}
 
 	return len(prometheusResp.Data.Result) > 0, nil
@@ -209,7 +228,7 @@ func (bp *Backpressure) release() {
 		bp.active = 0
 	}
 
-	if bp.throttle {
+	if bp.throttle.Load() {
 		bp.watermark = max(bp.min, bp.watermark/2)
 	} else {
 		bp.watermark = min(bp.max, bp.watermark+1)
