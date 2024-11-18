@@ -51,5 +51,3 @@ unit-norace:
 deps:
 	go get -u ./...
 	go mod tidy
-
-	(cd examples && go get -u ./... && go mod tidy)
