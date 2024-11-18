@@ -79,6 +79,10 @@ func NewFromConfig(cfg Config, next http.HandlerFunc) (*Entry, error) {
 
 	var querier ProxyClient = &Exit{next: next}
 
+	if cfg.EnableJitter {
+		querier = NewJitterer(querier, cfg.JitterDelay)
+	}
+
 	if cfg.EnableBackpressure {
 		querier = NewBackpressure(
 			querier,
@@ -87,10 +91,6 @@ func NewFromConfig(cfg Config, next http.HandlerFunc) (*Entry, error) {
 			cfg.BackpressureQueries,
 			cfg.BackpressureMonitoringURL,
 		)
-	}
-
-	if cfg.EnableJitter {
-		querier = NewJitterer(querier, cfg.JitterDelay)
 	}
 
 	if cfg.EnableObserver {
@@ -103,20 +103,18 @@ func NewFromConfig(cfg Config, next http.HandlerFunc) (*Entry, error) {
 // Proxy returns an http.Handler that processes requests through the middleware chain
 func (e *Entry) Proxy() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := e.client.ServeHTTP(w, r); err != nil {
-			e.handleError(w, err)
+		err := e.client.ServeHTTP(w, r)
+		if err == nil {
+			return
 		}
-	})
-}
 
-// handleError processes errors from the middleware chain and returns appropriate responses
-func (e *Entry) handleError(w http.ResponseWriter, err error) {
-	var blocked *RequestBlockedError
-	if errors.As(err, &blocked) {
-		writeAPIError(w, blocked.Error(), http.StatusTooManyRequests)
-		return
-	}
-	writeAPIError(w, fmt.Sprintf("proxy error: %v", err), http.StatusInternalServerError)
+		var blocked *RequestBlockedError
+		if errors.As(err, &blocked) {
+			writeAPIError(w, blocked.Error(), http.StatusTooManyRequests)
+			return
+		}
+		writeAPIError(w, fmt.Sprintf("proxy error: %v", err), http.StatusInternalServerError)
+	})
 }
 
 // Init initializes the middleware chain
