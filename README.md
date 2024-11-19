@@ -1,7 +1,4 @@
-[![Go Report Card][go-report-image]][go-report-url]
-
-[go-report-image]: https://goreportcard.com/badge/github.com/kevindweb/throttle-proxy
-[go-report-url]: https://goreportcard.com/report/github.com/kevindweb/throttle-proxy
+[![Latest Release](https://img.shields.io/github/release/kevindweb/throttle-proxy.svg?style=flat-square)](https://github.com/kevindweb/throttle-proxy/releases/latest) [![Go Report Card](https://goreportcard.com/badge/github.com/kevindweb/throttle-proxy)](https://goreportcard.com/report/github.com/kevindweb/throttle-proxy) [![Go Code reference](https://img.shields.io/badge/code%20reference-go.dev-darkblue.svg)](https://pkg.go.dev/github.com/kevindweb/throttle-proxy?tab=subdirectories)
 
 # Prometheus Backpressure Proxy
 

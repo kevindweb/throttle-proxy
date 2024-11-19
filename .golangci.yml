@@ -41,6 +41,7 @@ linters:
 
   presets:
     - performance
+    - complexity
 
 linters-settings:
   paralleltest:
