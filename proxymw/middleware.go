@@ -121,7 +121,7 @@ func NewFromConfig(cfg Config, client ProxyClient) (ProxyClient, error) {
 	}
 
 	if cfg.EnableLatency {
-		client = NewLatencyTracker(client)
+		client = NewLatencyTracker(client, cfg.CongestionWindowMin, cfg.CongestionWindowMax)
 	}
 
 	if cfg.EnableBackpressure {
