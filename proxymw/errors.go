@@ -6,16 +6,27 @@ import (
 )
 
 var (
-	ErrJitterDelayRequired         = errors.New("delay must be non-empty when jitter is enabled")
-	ErrBackpressureQueryRequired   = errors.New("must provide at least one backpressure query when backpressure is enabled")
+	ErrJitterDelayRequired       = errors.New("delay must be non-empty when jitter is enabled")
+	ErrBackpressureQueryRequired = errors.New(
+		"must provide at least one backpressure query when backpressure is enabled",
+	)
 	ErrCongestionWindowMinBelowOne = errors.New("backpressure min window < 1")
 	ErrCongestionWindowMaxBelowMin = errors.New("backpressure max window <= min window")
 	ErrNegativeThrottleCurve       = errors.New("throttle curve cannot be negative")
 	ErrNegativeQueryThresholds     = errors.New("backpressure query thresholds cannot be negative")
 	ErrEmergencyBelowWarnThreshold = errors.New("emergency threshold must be > warn threshold")
-	ErrRegistryRequired            = errors.New("prometheus registry is required when observer is enabled")
 
-	ErrBackpressureBackoff = BlockErr(BackpressureProxyType, "congestion window closed, backoff from backpressure")
+	ErrLatencyBackoff = BlockErr(
+		LatencyProxyType, "congestion window closed, backoff from slow queries",
+	)
+	ErrBackpressureBackoff = BlockErr(
+		BackpressureProxyType,
+		"congestion window closed, backoff from backpressure",
+	)
+
+	ErrNilRequest        = errors.New("nil *http.Request")
+	ErrNilResponseWriter = errors.New("nil http.ResponseWriter")
+	ErrNilResponse       = errors.New("nil *http.Response")
 )
 
 type RequestBlockedError struct {

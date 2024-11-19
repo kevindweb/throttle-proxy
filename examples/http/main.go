@@ -41,7 +41,7 @@ func NewRoutes(ctx context.Context, cfg proxymw.Config, upstream *url.URL) (*rou
 
 	mux := http.NewServeMux()
 
-	mw, err := proxymw.NewFromConfig(cfg, r.passthrough)
+	mw, err := proxymw.NewServeFromConfig(cfg, r.passthrough)
 	if err != nil {
 		log.Fatalf("failed to create middleware from config: %v", err)
 	}
@@ -134,8 +134,7 @@ func main() {
 		EnableJitter: enableJitter,
 		JitterDelay:  jitterDelay,
 
-		EnableObserver:   enableObserver,
-		ObserverRegistry: reg,
+		EnableObserver: enableObserver,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

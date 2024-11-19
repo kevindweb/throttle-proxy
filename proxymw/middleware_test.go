@@ -3,11 +3,11 @@ package proxymw
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,27 +32,33 @@ func TestMiddlewareOrder(t *testing.T) {
 		EnableJitter: true,
 		JitterDelay:  time.Second,
 
-		EnableObserver:   true,
-		ObserverRegistry: prometheus.NewRegistry(),
+		EnableObserver: true,
 	}
 
-	calls := 0
+	serveCalls := 0
+	rtCalls := 0
 	mock := &Mocker{
-		ServeHTTPFunc: func(w http.ResponseWriter, r *http.Request) {
-			calls++
+		ServeHTTPFunc: func(_ http.ResponseWriter, _ *http.Request) {
+			serveCalls++
+		},
+		RoundTripFunc: func(_ *http.Request) (*http.Response, error) {
+			rtCalls++
+			return &http.Response{
+				Body: http.NoBody,
+			}, nil
 		},
 	}
 
-	entry, err := NewFromConfig(config, mock.ServeHTTP)
+	serve, err := NewServeFromConfig(config, mock.ServeHTTP)
 	require.NoError(t, err)
 
-	entry.Init(ctx)
+	serve.Init(ctx)
 
-	c := entry.client
+	c := serve.client
 	observer := c.(*Observer)
 	jitterer := observer.client.(*Jitterer)
 	backpressure := jitterer.client.(*Backpressure)
-	exit := backpressure.client.(*Exit)
+	exit := backpressure.client.(*ServeExit)
 	require.NotNil(t, exit.next)
 
 	u, err := url.Parse("https://thanos.io")
@@ -60,10 +66,37 @@ func TestMiddlewareOrder(t *testing.T) {
 	r := &http.Request{
 		Method: http.MethodPost,
 		URL:    u,
+		Header: http.Header{},
 	}
 	r = r.WithContext(ctx)
-	entry.Proxy().ServeHTTP(nil, r)
-	require.Equal(t, 1, calls)
+
+	w := &httptest.ResponseRecorder{}
+	serve.Proxy().ServeHTTP(w, r)
+	require.Equal(t, 1, serveCalls)
+	require.Equal(t, *r.Clone(ctx), *r)
+
+	rt, err := NewRoundTripperFromConfig(config, mock)
+	require.NoError(t, err)
+
+	rt.Init(ctx)
+
+	rtc := rt.client
+	observer = rtc.(*Observer)
+	jitterer = observer.client.(*Jitterer)
+	backpressure = jitterer.client.(*Backpressure)
+	rtExit := backpressure.client.(*RoundTripperExit)
+	require.NotNil(t, rtExit.transport)
+
+	require.NoError(t, err)
+	r = r.WithContext(ctx)
+
+	res, err := rt.RoundTrip(r.Clone(ctx))
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	if res.Body != nil {
+		res.Body.Close()
+	}
+	require.Equal(t, 1, rtCalls)
 	require.Equal(t, *r.Clone(ctx), *r)
 }
 
@@ -80,14 +113,6 @@ func TestConfig(t *testing.T) {
 				JitterDelay:  0,
 			},
 			err: ErrJitterDelayRequired,
-		},
-		{
-			name: "no prom registry",
-			cfg: Config{
-				EnableObserver:   true,
-				ObserverRegistry: nil,
-			},
-			err: ErrRegistryRequired,
 		},
 		{
 			name: "no backpressure queries",
@@ -120,7 +145,7 @@ func TestConfig(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewFromConfig(tt.cfg, nil)
+			_, err := NewServeFromConfig(tt.cfg, nil)
 			require.ErrorIs(t, err, tt.err)
 		})
 	}

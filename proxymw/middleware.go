@@ -1,3 +1,4 @@
+// Package proxymw holds interfaces and configuration to safeguard backend services from dynamic load
 package proxymw
 
 import (
@@ -8,23 +9,56 @@ import (
 	"log"
 	"net/http"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // ProxyClient defines the interface for middleware components
 type ProxyClient interface {
 	Init(context.Context)
-	ServeHTTP(http.ResponseWriter, *http.Request) error
+	Next(Request) error
+}
+
+type Request interface {
+	Request() *http.Request
+}
+
+type Response interface {
+	Response() *http.Response
+	SetResponse(*http.Response)
+}
+
+type ResponseWriter interface {
+	ResponseWriter() http.ResponseWriter
+}
+
+type RequestResponseWrapper struct {
+	req *http.Request
+	res *http.Response
+	w   http.ResponseWriter
+}
+
+func (c *RequestResponseWrapper) Request() *http.Request {
+	return c.req
+}
+
+func (c *RequestResponseWrapper) Response() *http.Response {
+	return c.res
+}
+
+func (c *RequestResponseWrapper) SetResponse(res *http.Response) {
+	c.res = res
+}
+
+func (c *RequestResponseWrapper) ResponseWriter() http.ResponseWriter {
+	return c.w
 }
 
 // Config holds all middleware configuration options
 type Config struct {
 	BackpressureConfig
-	EnableJitter     bool
-	JitterDelay      time.Duration
-	EnableObserver   bool
-	ObserverRegistry *prometheus.Registry
+	EnableJitter   bool
+	JitterDelay    time.Duration
+	EnableObserver bool
+	EnableLatency  bool
 }
 
 // APIErrorResponse represents the standard error response format
@@ -53,39 +87,46 @@ func (c Config) Validate() error {
 		errs = append(errs, ErrJitterDelayRequired)
 	}
 
-	if c.EnableObserver && c.ObserverRegistry == nil {
-		errs = append(errs, ErrRegistryRequired)
-	}
-
 	return errors.Join(errs...)
 }
 
-// Entry represents the entry point of the middleware chain
-type Entry struct {
+// ServeEntry represents the entry point of the middleware chain
+type ServeEntry struct {
 	client ProxyClient
 }
 
-// NewFromConfig constructs a middleware chain based on configuration.
+// NewServeFromConfig constructs a middleware chain based on configuration.
 // The middleware chain is constructed in the following order:
 // 1. HTTP Request wrapping (Entry)
 // 2. Metrics collection (Observer)
 // 3. Request spreading (Jitter)
-// 4. Load management (Backpressure)
-// 5. Final handler (Exit)
-func NewFromConfig(cfg Config, next http.HandlerFunc) (*Entry, error) {
+// 4. Adaptive rate limiting (Backpressure)
+// 5. Throttling by request latency (LatencyTracker)
+// 6. Final handler (Exit)
+func NewServeFromConfig(cfg Config, next http.HandlerFunc) (*ServeEntry, error) {
+	var client ProxyClient = &ServeExit{next: next}
+
+	var err error
+	client, err = NewFromConfig(cfg, client)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ServeEntry{client: client}, nil
+}
+
+func NewFromConfig(cfg Config, client ProxyClient) (ProxyClient, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	var querier ProxyClient = &Exit{next: next}
-
-	if cfg.EnableJitter {
-		querier = NewJitterer(querier, cfg.JitterDelay)
+	if cfg.EnableLatency {
+		client = NewLatencyTracker(client)
 	}
 
 	if cfg.EnableBackpressure {
-		querier = NewBackpressure(
-			querier,
+		client = NewBackpressure(
+			client,
 			cfg.CongestionWindowMin,
 			cfg.CongestionWindowMax,
 			cfg.BackpressureQueries,
@@ -93,17 +134,25 @@ func NewFromConfig(cfg Config, next http.HandlerFunc) (*Entry, error) {
 		)
 	}
 
-	if cfg.EnableObserver {
-		querier = NewObserver(querier, cfg.ObserverRegistry)
+	if cfg.EnableJitter {
+		client = NewJitterer(client, cfg.JitterDelay)
 	}
 
-	return &Entry{client: querier}, nil
+	if cfg.EnableObserver {
+		client = NewObserver(client)
+	}
+
+	return client, nil
 }
 
 // Proxy returns an http.Handler that processes requests through the middleware chain
-func (e *Entry) Proxy() http.Handler {
+func (se *ServeEntry) Proxy() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		err := e.client.ServeHTTP(w, r)
+		rr := &RequestResponseWrapper{
+			w:   w,
+			req: r,
+		}
+		err := se.client.Next(rr)
 		if err == nil {
 			return
 		}
@@ -118,20 +167,96 @@ func (e *Entry) Proxy() http.Handler {
 }
 
 // Init initializes the middleware chain
-func (e *Entry) Init(ctx context.Context) {
-	e.client.Init(ctx)
+func (se *ServeEntry) Init(ctx context.Context) {
+	se.client.Init(ctx)
 }
 
-// Exit represents the final handler in the middleware chain
-type Exit struct {
+// ServeExit represents the final handler in the middleware chain for http.HandlerFunc
+type ServeExit struct {
 	next http.HandlerFunc
 }
 
-func (e *Exit) Init(_ context.Context) {}
+func (se *ServeExit) Init(_ context.Context) {}
 
-func (e *Exit) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
-	e.next.ServeHTTP(w, r)
+func (se *ServeExit) Next(rr Request) error {
+	rrw, ok := rr.(ResponseWriter)
+	if !ok {
+		return fmt.Errorf("request is of type %T not RequestResponseWriter", rr)
+	}
+
+	w := rrw.ResponseWriter()
+	if w == nil {
+		return ErrNilResponseWriter
+	}
+
+	r := rr.Request()
+	if r == nil {
+		return ErrNilRequest
+	}
+
+	se.next.ServeHTTP(w, r)
 	return nil
+}
+
+type RoundTripperEntry struct {
+	client ProxyClient
+}
+
+func NewRoundTripperFromConfig(cfg Config, rt http.RoundTripper) (*RoundTripperEntry, error) {
+	var client ProxyClient = &RoundTripperExit{transport: rt}
+
+	var err error
+	client, err = NewFromConfig(cfg, client)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RoundTripperEntry{client: client}, nil
+}
+
+func (rte *RoundTripperEntry) RoundTrip(req *http.Request) (*http.Response, error) {
+	rr := &RequestResponseWrapper{
+		req: req,
+	}
+
+	err := rte.client.Next(rr)
+	if err != nil {
+		return nil, err
+	}
+
+	res := rr.Response()
+	if res == nil {
+		return nil, ErrNilResponse
+	}
+
+	return res, nil
+}
+
+func (rte *RoundTripperEntry) Init(ctx context.Context) {
+	rte.client.Init(ctx)
+}
+
+// RoundTripperExit represents the final handler in the middleware chain for http.RoundTripper
+type RoundTripperExit struct {
+	transport http.RoundTripper
+}
+
+func (rte *RoundTripperExit) Init(_ context.Context) {}
+
+func (rte *RoundTripperExit) Next(r Request) error {
+	rr, ok := r.(Response)
+	if !ok {
+		return fmt.Errorf("request is of type %T not RequestResponseWriter", rr)
+	}
+
+	req := r.Request()
+	if req == nil {
+		return ErrNilRequest
+	}
+
+	res, err := rte.transport.RoundTrip(req) // nolint:bodyclose // passthrough
+	rr.SetResponse(res)
+	return err
 }
 
 // writeAPIError writes a standardized error response

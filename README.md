@@ -1,3 +1,8 @@
+[![Go Report Card][go-report-image]][go-report-url]
+
+[go-report-image]: https://goreportcard.com/badge/github.com/kevindweb/throttle-proxy
+[go-report-url]: https://goreportcard.com/report/github.com/kevindweb/throttle-proxy
+
 # Prometheus Backpressure Proxy
 
 A Go middleware that implements an adaptive congestion control algorithm to protect backend services using Prometheus metrics as backpressure signals.
