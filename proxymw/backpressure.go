@@ -22,6 +22,7 @@ const (
 	DefaultThrottleCurve      = 4.0
 	DefaultMaxIdleConns       = 100
 	DefaultIdleConnTimeout    = 90 * time.Second
+	InstantQueryEndpoint      = "/api/v1/query"
 )
 
 type PrometheusResponse struct {
@@ -31,10 +32,14 @@ type PrometheusResponse struct {
 }
 
 type BackpressureQuery struct {
-	Query              string  // promQL to monitor system load or usage
-	WarningThreshold   float64 // The load value at which throttling begins (e.g., 80% capacity)
-	EmergencyThreshold float64 // The load value at which the max num of requests are blocked (e.g., 100% capacity). Still lets through CongestionWindowMin
-	ThrottlingCurve    float64 // A constant controlling the aggressiveness of throttling (e.g., default 4.0 for steep growth)
+	// Query is the PromQL to monitor system load or usage
+	Query string
+	// WarningThreshold is the load value at which throttling begins (e.g., 80% capacity)
+	WarningThreshold float64
+	// EmergencyThreshold is the load value at which the max num of requests are blocked (e.g., 100% capacity). Still lets through CongestionWindowMin
+	EmergencyThreshold float64
+	// ThrottlingCurve is a constant controlling the aggressiveness of throttling (e.g., default 4.0 for steep growth)
+	ThrottlingCurve float64
 }
 
 func (q BackpressureQuery) Validate() error {
@@ -139,7 +144,7 @@ type Backpressure struct {
 var _ ProxyClient = &Backpressure{}
 
 func NewBackpressure(
-	querier ProxyClient,
+	client ProxyClient,
 	minWindow,
 	maxWindow int,
 	queries []BackpressureQuery,
@@ -159,7 +164,7 @@ func NewBackpressure(
 		},
 		monitorURL: monitorURL,
 		queries:    queries,
-		client:     querier,
+		client:     client,
 	}
 }
 
@@ -199,8 +204,15 @@ func (bp *Backpressure) updateThrottle(q BackpressureQuery, curr float64) {
 	bp.throttleFlags.Store(q, q.throttlePercent(curr))
 
 	throttlePercent := 0.0
+	var err error
 	bp.throttleFlags.Range(func(_, value interface{}) bool {
-		throttlePercent = max(throttlePercent, value.(float64))
+		val, ok := value.(float64)
+		if !ok {
+			log.Printf("error updating query '%s' throttle to %f: %v", q.Query, curr, err)
+			return true
+		}
+
+		throttlePercent = max(throttlePercent, val)
 		return true
 	})
 
@@ -211,7 +223,7 @@ func (bp *Backpressure) updateThrottle(q BackpressureQuery, curr float64) {
 
 // queryMetric checks if the PromQL expression returns a non-empty response (backpressure is firing)
 func (bp *Backpressure) metricFired(ctx context.Context, query string) (float64, error) {
-	u, err := url.Parse(bp.monitorURL + "/api/v1/query")
+	u, err := url.Parse(bp.monitorURL + InstantQueryEndpoint)
 	if err != nil {
 		return 0, fmt.Errorf("parse monitor URL: %w", err)
 	}
@@ -220,7 +232,7 @@ func (bp *Backpressure) metricFired(ctx context.Context, query string) (float64,
 	q.Set("query", query)
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
 	if err != nil {
 		return 0, fmt.Errorf("create request: %w", err)
 	}
@@ -253,13 +265,13 @@ func (bp *Backpressure) Init(ctx context.Context) {
 	bp.client.Init(ctx)
 }
 
-func (bp *Backpressure) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
+func (bp *Backpressure) Next(rr Request) error {
 	if err := bp.check(); err != nil {
 		return err
 	}
 
 	defer bp.release()
-	return bp.client.ServeHTTP(w, r)
+	return bp.client.Next(rr)
 }
 
 // check ensures the number of concurrent active requests stays within the allowed window.

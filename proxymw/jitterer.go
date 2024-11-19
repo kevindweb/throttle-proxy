@@ -3,7 +3,6 @@ package proxymw
 import (
 	"context"
 	"math/rand"
-	"net/http"
 	"time"
 )
 
@@ -15,10 +14,10 @@ type Jitterer struct {
 
 var _ ProxyClient = &Jitterer{}
 
-func NewJitterer(querier ProxyClient, delay time.Duration) *Jitterer {
+func NewJitterer(client ProxyClient, delay time.Duration) *Jitterer {
 	return &Jitterer{
 		delay:  delay,
-		client: querier,
+		client: client,
 	}
 }
 
@@ -26,9 +25,9 @@ func (j *Jitterer) Init(ctx context.Context) {
 	j.client.Init(ctx)
 }
 
-func (j *Jitterer) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
+func (j *Jitterer) Next(rr Request) error {
 	j.sleep()
-	return j.client.ServeHTTP(w, r)
+	return j.client.Next(rr)
 }
 
 func (j *Jitterer) sleep() {
