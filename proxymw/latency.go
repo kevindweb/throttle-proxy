@@ -5,6 +5,9 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 const (
@@ -12,21 +15,37 @@ const (
 	DefaultPercentileWindow = 1000
 )
 
+var (
+	p90LatencyGauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_p90_latency"})
+)
+
 type LatencyTracker struct {
-	client     ProxyClient
-	mu         sync.Mutex
-	watermark  int
-	active     int
-	min, max   int
-	percentile *Percentile
+	client    ProxyClient
+	mu        sync.Mutex
+	watermark int
+	active    int
+	min, max  int
+	p90Gauge  prometheus.Gauge
+
+	// for percentile calculation
+	latencies []float64
+	maxSize   int
+	currIndex int
+	elements  int
 }
 
 var _ ProxyClient = &LatencyTracker{}
 
-func NewLatencyTracker(client ProxyClient) *LatencyTracker {
+func NewLatencyTracker(client ProxyClient, minWindow, maxWindow int) *LatencyTracker {
 	return &LatencyTracker{
-		client:     client,
-		percentile: NewPercentile(DefaultPercentileWindow),
+		min:       minWindow,
+		watermark: minWindow,
+		max:       maxWindow,
+
+		client:    client,
+		latencies: make([]float64, DefaultPercentileWindow),
+		maxSize:   DefaultPercentileWindow,
+		p90Gauge:  p90LatencyGauge,
 	}
 }
 
@@ -62,50 +81,28 @@ func (l *LatencyTracker) release(ctx context.Context, latency float64) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	l.active--
-	if l.active < 0 {
-		l.active = 0
-	}
-
-	if ctx.Err() == context.DeadlineExceeded || l.percentile.Block(latency) {
+	if ctx.Err() == context.DeadlineExceeded || (l.elements > 100 && latency > l.P90()) {
 		l.watermark = max(l.min, l.watermark/2)
 	} else {
 		l.watermark = min(l.max, l.watermark+1)
 	}
 
-	l.percentile.AddValue(latency)
+	l.active = max(0, l.active-1)
+	l.AddValue(latency)
 }
 
-type Percentile struct {
-	values    []float64
-	maxSize   int
-	currIndex int
+func (l *LatencyTracker) AddValue(latency float64) {
+	l.latencies[l.currIndex] = latency
+	l.currIndex = (l.currIndex + 1) % l.maxSize
+	l.elements++
 }
 
-func NewPercentile(windowSize int) *Percentile {
-	return &Percentile{
-		values:  make([]float64, windowSize),
-		maxSize: windowSize,
-	}
-}
-
-func (p *Percentile) AddValue(latency float64) {
-	p.values[p.currIndex] = latency
-	p.currIndex = (p.currIndex + 1) % p.maxSize
-}
-
-func (p *Percentile) Block(latency float64) bool {
-	return p.GetCurrentCount() > 100 && p.P90() < latency
-}
-
-func (p *Percentile) P90() float64 {
-	sortedVals := make([]float64, p.maxSize)
-	copy(sortedVals, p.values)
+func (l *LatencyTracker) P90() float64 {
+	sortedVals := make([]float64, l.maxSize)
+	copy(sortedVals, l.latencies)
 	sort.Float64s(sortedVals)
-	p90Index := int(float64(p.maxSize) * 0.9)
-	return sortedVals[p90Index]
-}
-
-func (p *Percentile) GetCurrentCount() int {
-	return p.maxSize
+	p90Index := int(float64(l.maxSize) * 0.9)
+	p90 := sortedVals[p90Index]
+	l.p90Gauge.Set(p90)
+	return p90
 }

@@ -9,10 +9,17 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBackpressureRelease(t *testing.T) {
+	belowMinWatermarkGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{Name: "fake_wm_gauge_below_min"},
+	)
+	belowAllowanceWatermarkGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{Name: "fake_wm_gauge_below_allowance"},
+	)
 	for _, tt := range []struct {
 		name   string
 		bp     *Backpressure
@@ -21,35 +28,39 @@ func TestBackpressureRelease(t *testing.T) {
 		{
 			name: "watermark below allowance",
 			bp: &Backpressure{
-				min:       10,
-				watermark: 14,
-				max:       100,
-				allowance: 0.25,
-				active:    1,
+				min:            10,
+				watermark:      14,
+				max:            100,
+				allowance:      0.25,
+				active:         1,
+				watermarkGauge: belowAllowanceWatermarkGauge,
 			},
 			expect: &Backpressure{
-				min:       10,
-				watermark: 15,
-				max:       100,
-				allowance: 0.25,
-				active:    0,
+				min:            10,
+				watermark:      15,
+				max:            100,
+				allowance:      0.25,
+				active:         0,
+				watermarkGauge: belowAllowanceWatermarkGauge,
 			},
 		},
 		{
 			name: "watermark below min",
 			bp: &Backpressure{
-				min:       10,
-				watermark: 14,
-				max:       100,
-				allowance: 0.05,
-				active:    9,
+				min:            10,
+				watermark:      14,
+				max:            100,
+				allowance:      0.05,
+				active:         9,
+				watermarkGauge: belowMinWatermarkGauge,
 			},
 			expect: &Backpressure{
-				min:       10,
-				watermark: 10,
-				max:       100,
-				allowance: 0.05,
-				active:    8,
+				min:            10,
+				watermark:      10,
+				max:            100,
+				allowance:      0.05,
+				active:         8,
+				watermarkGauge: belowMinWatermarkGauge,
 			},
 		},
 	} {

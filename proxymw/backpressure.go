@@ -11,18 +11,25 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 )
 
 const (
 	BackpressureProxyType     = "backpressure"
-	BackpressureUpdateCadence = time.Second
-	MonitorQueryTimeout       = 10 * time.Second
+	BackpressureUpdateCadence = time.Minute
+	MonitorQueryTimeout       = 15 * time.Second
 	DefaultThrottleCurve      = 4.0
 	DefaultMaxIdleConns       = 100
 	DefaultIdleConnTimeout    = 90 * time.Second
 	InstantQueryEndpoint      = "/api/v1/query"
+)
+
+var (
+	bpWatermarkGauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_watermark"})
+	bpAllowanceGauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_allowance"})
 )
 
 type PrometheusResponse struct {
@@ -127,10 +134,12 @@ func (c BackpressureConfig) Validate() error {
 // 4. if backpressure is not spiking, widen the window by one (additive)
 // 5. if backpressure signals fire, cut the window by half (multiplicative)
 type Backpressure struct {
-	mu        sync.Mutex
-	watermark int
-	active    int
-	min, max  int
+	mu             sync.Mutex
+	watermark      int
+	active         int
+	min, max       int
+	watermarkGauge prometheus.Gauge
+	allowanceGauge prometheus.Gauge
 
 	monitorClient *http.Client
 	monitorURL    string
@@ -145,16 +154,18 @@ var _ ProxyClient = &Backpressure{}
 
 func NewBackpressure(
 	client ProxyClient,
-	minWindow,
+	minWindow int,
 	maxWindow int,
 	queries []BackpressureQuery,
 	monitorURL string,
 ) *Backpressure {
 	return &Backpressure{
-		watermark: minWindow,
-		min:       minWindow,
-		max:       maxWindow,
-		allowance: 1,
+		watermark:      minWindow,
+		min:            minWindow,
+		max:            maxWindow,
+		allowance:      1,
+		watermarkGauge: bpWatermarkGauge,
+		allowanceGauge: bpAllowanceGauge,
 		monitorClient: &http.Client{
 			Timeout: MonitorQueryTimeout,
 			Transport: &http.Transport{
@@ -166,6 +177,22 @@ func NewBackpressure(
 		queries:    queries,
 		client:     client,
 	}
+}
+
+func (bp *Backpressure) Init(ctx context.Context) {
+	bp.allowanceGauge.Set(float64(bp.allowance))
+	bp.watermarkGauge.Set(float64(bp.watermark))
+	bp.metricsLoop(ctx)
+	bp.client.Init(ctx)
+}
+
+func (bp *Backpressure) Next(rr Request) error {
+	if err := bp.check(); err != nil {
+		return err
+	}
+
+	defer bp.release()
+	return bp.client.Next(rr)
 }
 
 // metricsLoop creates a goroutine for each backpressure signal to avoid one slow query from
@@ -218,6 +245,7 @@ func (bp *Backpressure) updateThrottle(q BackpressureQuery, curr float64) {
 
 	bp.mu.Lock()
 	bp.allowance = 1 - throttlePercent
+	bp.allowanceGauge.Set(float64(bp.allowance))
 	bp.mu.Unlock()
 }
 
@@ -260,20 +288,6 @@ func (bp *Backpressure) metricFired(ctx context.Context, query string) (float64,
 	return float64(results[0].Value), nil
 }
 
-func (bp *Backpressure) Init(ctx context.Context) {
-	bp.metricsLoop(ctx)
-	bp.client.Init(ctx)
-}
-
-func (bp *Backpressure) Next(rr Request) error {
-	if err := bp.check(); err != nil {
-		return err
-	}
-
-	defer bp.release()
-	return bp.client.Next(rr)
-}
-
 // check ensures the number of concurrent active requests stays within the allowed window.
 // If the active count exceeds the current watermark, the request is denied.
 func (bp *Backpressure) check() error {
@@ -303,4 +317,5 @@ func (bp *Backpressure) release() {
 	bp.active = max(0, bp.active-1)
 	bp.watermark = min(bp.watermark+1, int(float64(bp.max)*bp.allowance))
 	bp.watermark = max(bp.watermark, bp.min)
+	bp.watermarkGauge.Set(float64(bp.watermark))
 }
