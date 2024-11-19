@@ -19,7 +19,7 @@ import (
 
 const (
 	BackpressureProxyType     = "backpressure"
-	BackpressureUpdateCadence = time.Minute
+	BackpressureUpdateCadence = 30 * time.Second
 	MonitorQueryTimeout       = 15 * time.Second
 	DefaultThrottleCurve      = 4.0
 	DefaultMaxIdleConns       = 100

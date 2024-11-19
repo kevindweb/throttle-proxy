@@ -16,7 +16,7 @@ const (
 )
 
 var (
-	p90LatencyGauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_p90_latency"})
+	p90LatencyGauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_p90_latency_ms"})
 )
 
 type LatencyTracker struct {
@@ -94,14 +94,14 @@ func (l *LatencyTracker) release(ctx context.Context, latency float64) {
 func (l *LatencyTracker) AddValue(latency float64) {
 	l.latencies[l.currIndex] = latency
 	l.currIndex = (l.currIndex + 1) % l.maxSize
-	l.elements++
+	l.elements = min(l.elements+1, l.maxSize)
 }
 
 func (l *LatencyTracker) P90() float64 {
-	sortedVals := make([]float64, l.maxSize)
+	sortedVals := make([]float64, l.elements)
 	copy(sortedVals, l.latencies)
 	sort.Float64s(sortedVals)
-	p90Index := int(float64(l.maxSize) * 0.9)
+	p90Index := int(float64(l.elements) * 0.9)
 	p90 := sortedVals[p90Index]
 	l.p90Gauge.Set(p90)
 	return p90

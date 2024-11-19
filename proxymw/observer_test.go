@@ -25,7 +25,7 @@ func TestObserverNextError(t *testing.T) {
 				),
 				reqCounter:     prometheus.NewCounter(prometheus.CounterOpts{Name: "block_test_request_count"}),
 				latencyCounter: prometheus.NewCounter(prometheus.CounterOpts{Name: "block_test_request_latency_ms"}),
-				activeCounter:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "block_test_active_requests"}),
+				activeGauge:    prometheus.NewGauge(prometheus.GaugeOpts{Name: "block_test_active_requests"}),
 				client: &Mocker{
 					NextFunc: func(_ Request) error {
 						return ErrBackpressureBackoff
@@ -50,7 +50,7 @@ func TestObserverNextError(t *testing.T) {
 				),
 				reqCounter:     prometheus.NewCounter(prometheus.CounterOpts{Name: "normal_test_request_count"}),
 				latencyCounter: prometheus.NewCounter(prometheus.CounterOpts{Name: "normal_test_request_latency_ms"}),
-				activeCounter:  prometheus.NewGauge(prometheus.GaugeOpts{Name: "normal_test_active_requests"}),
+				activeGauge:    prometheus.NewGauge(prometheus.GaugeOpts{Name: "normal_test_active_requests"}),
 				client: &Mocker{
 					NextFunc: func(r Request) error {
 						require.Equal(t, nil, r)

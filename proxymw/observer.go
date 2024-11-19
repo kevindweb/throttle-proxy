@@ -16,7 +16,7 @@ var (
 	)
 	reqCounter     = promauto.NewCounter(prometheus.CounterOpts{Name: "proxymw_request_count"})
 	latencyCounter = promauto.NewCounter(prometheus.CounterOpts{Name: "proxymw_request_latency_ms"})
-	activeCounter  = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_active_requests"})
+	activeGauge    = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_active_requests"})
 )
 
 // Observer emits metrics such as error rate and how often proxies are blocking requests.
@@ -28,23 +28,21 @@ type Observer struct {
 	blockCounter   *prometheus.CounterVec
 	reqCounter     prometheus.Counter
 	latencyCounter prometheus.Counter
-	activeCounter  prometheus.Gauge
+	activeGauge    prometheus.Gauge
 }
 
 var _ ProxyClient = &Observer{}
 
 func NewObserver(client ProxyClient) *Observer {
-	o := &Observer{
+	return &Observer{
 		client: client,
 
 		errCounter:     errCounter,
 		blockCounter:   blockCounter,
 		reqCounter:     reqCounter,
 		latencyCounter: latencyCounter,
-		activeCounter:  activeCounter,
+		activeGauge:    activeGauge,
 	}
-
-	return o
 }
 
 func (o *Observer) Init(ctx context.Context) {
@@ -52,7 +50,7 @@ func (o *Observer) Init(ctx context.Context) {
 }
 
 func (o *Observer) Next(rr Request) error {
-	o.activeCounter.Inc()
+	o.activeGauge.Inc()
 	start := time.Now()
 	err := o.client.Next(rr)
 	o.handleMetrics(err, start)
@@ -71,5 +69,5 @@ func (o *Observer) handleMetrics(err error, start time.Time) {
 
 	o.reqCounter.Inc()
 	o.latencyCounter.Add(float64(time.Since(start).Milliseconds()))
-	o.activeCounter.Dec()
+	o.activeGauge.Dec()
 }
