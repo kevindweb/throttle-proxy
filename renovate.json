@@ -1,0 +1,29 @@
+{
+    "enabledManagers": [
+        "gomod"
+    ],
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "extends": [
+        "config:base",
+        "group:all",
+        "schedule:weekly"
+    ],
+    "baseBranches": [
+        "main"
+    ],
+    "prConcurrentLimit": 3,
+    "vulnerabilityAlerts": {
+        "enabled": true
+    },
+    "postUpdateOptions": [
+        "gomodTidy",
+        "gomodUpdateImportPaths"
+    ],
+    "gomod": {
+        "postUpdateOptions": [
+            "gomodTidy",
+            "gomodUpdateImportPaths"
+        ]
+    },
+    "rebaseWhen": "conflicted"
+}
