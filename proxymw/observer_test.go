@@ -12,7 +12,7 @@ import (
 func TestObserverNextError(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
-		err      error
+		err      string
 		observer *Observer
 		check    func(*testing.T, *Observer)
 	}{
@@ -32,7 +32,7 @@ func TestObserverNextError(t *testing.T) {
 					},
 				},
 			},
-			err: ErrBackpressureBackoff,
+			err: ErrBackpressureBackoff.Error(),
 			check: func(t *testing.T, obs *Observer) {
 				metric := obs.blockCounter.WithLabelValues(BackpressureProxyType)
 				var metricWriter dto.Metric
@@ -58,7 +58,7 @@ func TestObserverNextError(t *testing.T) {
 					},
 				},
 			},
-			err: errors.New("fail"),
+			err: "fail",
 			check: func(t *testing.T, obs *Observer) {
 				metric := obs.errCounter
 				var metricWriter dto.Metric
@@ -69,7 +69,7 @@ func TestObserverNextError(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.err, tt.observer.Next(nil))
+			require.Equal(t, tt.err, tt.observer.Next(nil).Error())
 			tt.check(t, tt.observer)
 		})
 	}

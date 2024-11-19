@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-// Mocker simply mocks the main http.HandlerFunc methods for unit testing
+// Mocker simply mocks the main interfaces for unit testing
 type Mocker struct {
 	ServeHTTPFunc func(w http.ResponseWriter, r *http.Request)
 	RoundTripFunc func(r *http.Request) (*http.Response, error)
@@ -13,8 +13,9 @@ type Mocker struct {
 	InitFunc      func(context.Context)
 }
 
-var _ http.HandlerFunc = (&Mocker{}).ServeHTTP
-var _ http.RoundTripper = (&Mocker{})
+var _ http.Handler = &Mocker{}
+var _ http.RoundTripper = &Mocker{}
+var _ ProxyClient = &Mocker{}
 
 func (m *Mocker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.ServeHTTPFunc(w, r)
