@@ -6,7 +6,8 @@
     "extends": [
         "config:recommended",
         "group:all",
-        "schedule:weekly"
+        "schedule:weekly",
+        ":dependencyDashboard"
     ],
     "baseBranches": [
         "main"
