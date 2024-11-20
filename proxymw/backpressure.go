@@ -40,13 +40,13 @@ type PrometheusResponse struct {
 
 type BackpressureQuery struct {
 	// Query is the PromQL to monitor system load or usage
-	Query string
+	Query string `yaml:"query"`
 	// WarningThreshold is the load value at which throttling begins (e.g., 80% capacity)
-	WarningThreshold float64
+	WarningThreshold float64 `yaml:"warning_threshold"`
 	// EmergencyThreshold is the load value at which the max num of requests are blocked (e.g., 100% capacity). Still lets through CongestionWindowMin
-	EmergencyThreshold float64
+	EmergencyThreshold float64 `yaml:"emergency_threshold"`
 	// ThrottlingCurve is a constant controlling the aggressiveness of throttling (e.g., default 4.0 for steep growth)
-	ThrottlingCurve float64
+	ThrottlingCurve float64 `yaml:"throttling_curve"`
 }
 
 func (q BackpressureQuery) Validate() error {
@@ -85,11 +85,11 @@ func (q BackpressureQuery) throttlePercent(curr float64) float64 {
 }
 
 type BackpressureConfig struct {
-	EnableBackpressure        bool
-	BackpressureMonitoringURL string
-	BackpressureQueries       []BackpressureQuery
-	CongestionWindowMin       int
-	CongestionWindowMax       int
+	EnableBackpressure        bool                `yaml:"enable_backpressure"`
+	BackpressureMonitoringURL string              `yaml:"backpressure_monitoring_url"`
+	BackpressureQueries       []BackpressureQuery `yaml:"backpressure_queries"`
+	CongestionWindowMin       int                 `yaml:"congestion_window_min"`
+	CongestionWindowMax       int                 `yaml:"congestion_window_max"`
 }
 
 func (c BackpressureConfig) Validate() error {
