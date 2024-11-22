@@ -54,11 +54,11 @@ func (c *RequestResponseWrapper) ResponseWriter() http.ResponseWriter {
 
 // Config holds all middleware configuration options
 type Config struct {
-	BackpressureConfig `yaml:"backpressure_config"`
-	EnableJitter       bool          `yaml:"enable_jitter"`
-	JitterDelay        time.Duration `yaml:"jitter_delay"`
-	EnableObserver     bool          `yaml:"enable_observer"`
-	EnableLatency      bool          `yaml:"enable_latency"`
+	BackpressureConfig `yaml:"backpressure_config" koanf:"backpressure_config"`
+	EnableJitter       bool          `yaml:"enable_jitter"       koanf:"enable_jitter"`
+	JitterDelay        time.Duration `yaml:"jitter_delay"        koanf:"jitter_delay"`
+	EnableObserver     bool          `yaml:"enable_observer"     koanf:"enable_observer"`
+	EnableLatency      bool          `yaml:"enable_latency"      koanf:"enable_latency"`
 }
 
 // APIErrorResponse represents the standard error response format
