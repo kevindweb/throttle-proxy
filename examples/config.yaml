@@ -1,0 +1,15 @@
+upstream: http://localhost:9095
+insecure_listen_addr: 127.0.0.1:7777
+proxymw_config:
+  enable_jitter: true
+  jitter_delay: 5s
+  enable_observer: true
+  backpressure_config:
+    enable_backpressure: true
+    backpressure_monitoring_url: http://localhost:9095
+    backpressure_queries:
+      - query: sum(rate(throughput[1m]))
+        warning_threshold: 5000
+        emergency_threshold: 8000
+    congestion_window_min: 10
+    congestion_window_max: 100
