@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,9 +33,10 @@ type routes struct {
 	logger *log.Logger
 }
 
-func NewRoutes(ctx context.Context, cfg proxymw.Config, upstream *url.URL) (*routes, error) {
+func NewRoutes(
+	ctx context.Context, cfg proxymw.Config, passthroughs []string, upstream *url.URL,
+) (*routes, error) {
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
-	passthrough := Passthrough{proxy}
 
 	r := &routes{
 		upstream: upstream,
@@ -52,14 +55,19 @@ func NewRoutes(ctx context.Context, cfg proxymw.Config, upstream *url.URL) (*rou
 
 	mux.Handle("/api/v1/query", mw.Proxy())
 	mux.Handle("/api/v1/query_range", mw.Proxy())
-	mux.Handle("/federate", passthrough)
-	mux.Handle("/api/v1/alerts", passthrough)
-	mux.Handle("/api/v1/rules", passthrough)
-	mux.Handle("/api/v1/series", passthrough)
-	mux.Handle("/api/v1/query_exemplars", passthrough)
+	mux.Handle("/federate", http.HandlerFunc(r.passthrough))
+	mux.Handle("/api/v1/alerts", http.HandlerFunc(r.passthrough))
+	mux.Handle("/api/v1/rules", http.HandlerFunc(r.passthrough))
+	mux.Handle("/api/v1/series", http.HandlerFunc(r.passthrough))
+	mux.Handle("/api/v1/query_exemplars", http.HandlerFunc(r.passthrough))
 	mux.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	}))
+
+	// Register optional passthrough paths.
+	for _, path := range passthroughs {
+		mux.Handle(path, http.HandlerFunc(r.passthrough))
+	}
 
 	r.mux = mux
 	proxy.ErrorLog = log.Default()
@@ -75,31 +83,171 @@ func (r *routes) passthrough(w http.ResponseWriter, req *http.Request) {
 	r.handler.ServeHTTP(w, req)
 }
 
-type Passthrough struct {
-	proxy *httputil.ReverseProxy
-}
-
-func (p Passthrough) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	p.proxy.ServeHTTP(w, req)
-}
-
 type Config struct {
 	// InsecureListenAddresss is the address the proxy HTTP server should listen on
 	InsecureListenAddress string `yaml:"insecure_listen_addr"`
 	// Upstream is the upstream URL to proxy to
-	Upstream    string         `yaml:"upstream"`
-	ProxyConfig proxymw.Config `yaml:"proxymw_config"`
+	Upstream               string         `yaml:"upstream"`
+	UnsafePassthroughPaths []string       `yaml:"unsafe_passthrough_paths"`
+	ProxyConfig            proxymw.Config `yaml:"proxymw_config"`
 }
 
-func parseConfigFile() (Config, error) {
-	configFile := ""
+type StringSlice []string
+
+func (s *StringSlice) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *StringSlice) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
+type Float64Slice []float64
+
+func (f *Float64Slice) String() string {
+	values := make([]string, len(*f))
+	for i, v := range *f {
+		values[i] = fmt.Sprintf("%g", v)
+	}
+	return strings.Join(values, ",")
+}
+
+func (f *Float64Slice) Set(value string) error {
+	v, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return err
+	}
+	*f = append(*f, v)
+	return nil
+}
+
+func parseConfigs() (Config, error) {
+	var (
+		insecureListenAddress           string
+		upstream                        string
+		unsafePassthroughPaths          string
+		enableBackpressure              bool
+		backpressureMonitoringURL       string
+		backpressureQueries             StringSlice
+		backpressureWarnThresholds      Float64Slice
+		backpressureEmergencyThresholds Float64Slice
+		congestionWindowMin             int
+		congestionWindowMax             int
+		enableJitter                    bool
+		jitterDelay                     time.Duration
+		enableObserver                  bool
+		configFile                      string
+	)
+
 	flagset := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	flagset.StringVar(&configFile, "config-file", "", "Config file to initialize the proxy")
-
+	flagset.StringVar(
+		&insecureListenAddress, "insecure-listen-address", "",
+		"The address the proxy HTTP server should listen on.",
+	)
+	flagset.StringVar(&upstream, "upstream", "", "The upstream URL to proxy to.")
+	flagset.BoolVar(&enableJitter, "enable-jitter", false, "Use the jitter middleware")
+	flagset.DurationVar(
+		&jitterDelay, "jitter-delay", 0,
+		"Random jitter to apply when enabled",
+	)
+	flagset.BoolVar(
+		&enableBackpressure, "enable-bp", false,
+		"Use the additive increase multiplicative decrease middleware using backpressure metrics",
+	)
+	flagset.IntVar(
+		&congestionWindowMin, "bp-min-window", 0,
+		"Min concurrent queries to passthrough regardless of spikes in backpressure.",
+	)
+	flagset.IntVar(
+		&congestionWindowMax, "bp-max-window", 0,
+		"Max concurrent queries to passthrough regardless of backpressure health.",
+	)
+	flagset.StringVar(
+		&backpressureMonitoringURL, "bp-monitoring-url", "",
+		"The address on which to read backpressure metrics with PromQL queries.",
+	)
+	flagset.Var(
+		&backpressureQueries, "bp-query",
+		"PromQL that signifies an increase in downstream failure",
+	)
+	flagset.Var(
+		&backpressureWarnThresholds, "bp-warn",
+		"Threshold that defines when the system should start backing off",
+	)
+	flagset.Var(
+		&backpressureEmergencyThresholds, "bp-emergency",
+		"Threshold that defines when the system should apply maximum throttling",
+	)
+	flagset.BoolVar(
+		&enableObserver, "enable-observer", false,
+		"Collect middleware latency and error metrics",
+	)
+	flagset.StringVar(&unsafePassthroughPaths, "unsafe-passthrough-paths", "",
+		"Comma delimited allow list of exact HTTP paths that should be allowed to hit "+
+			"the upstream URL without any enforcement.")
 	if err := flagset.Parse(os.Args[1:]); err != nil {
 		return Config{}, err
 	}
 
+	if configFile != "" {
+		return parseConfigFile(configFile)
+	}
+
+	for _, path := range strings.Split(unsafePassthroughPaths, ",") {
+		u, err := url.Parse(fmt.Sprintf("http://example.com%v", path))
+		if err != nil {
+			return Config{}, fmt.Errorf(
+				"path %q is not a valid URI path, got %v", path, unsafePassthroughPaths,
+			)
+		}
+		if u.Path != path {
+			return Config{}, fmt.Errorf(
+				"path %q is not a valid URI path, got %v", path, unsafePassthroughPaths,
+			)
+		}
+		if u.Path == "" || u.Path == "/" {
+			return Config{}, fmt.Errorf(
+				"path %q is not allowed, got %v", u.Path, unsafePassthroughPaths,
+			)
+		}
+	}
+
+	n := len(backpressureQueries)
+	queries := make([]proxymw.BackpressureQuery, n)
+	if len(backpressureWarnThresholds) != n {
+		return Config{}, fmt.Errorf("expected %d warn thresholds for %d backpressure queries", n, n)
+	}
+	for i, query := range backpressureQueries {
+		queries[i] = proxymw.BackpressureQuery{
+			Query:              query,
+			WarningThreshold:   backpressureWarnThresholds[i],
+			EmergencyThreshold: backpressureEmergencyThresholds[i],
+		}
+	}
+
+	return Config{
+		InsecureListenAddress:  insecureListenAddress,
+		Upstream:               upstream,
+		UnsafePassthroughPaths: strings.Split(unsafePassthroughPaths, ","),
+		ProxyConfig: proxymw.Config{
+			EnableJitter:   enableJitter,
+			JitterDelay:    jitterDelay,
+			EnableObserver: enableObserver,
+			BackpressureConfig: proxymw.BackpressureConfig{
+				EnableBackpressure:        enableBackpressure,
+				BackpressureMonitoringURL: backpressureMonitoringURL,
+				BackpressureQueries:       queries,
+				CongestionWindowMin:       congestionWindowMin,
+				CongestionWindowMax:       congestionWindowMax,
+			},
+		},
+	}, nil
+}
+
+func parseConfigFile(configFile string) (Config, error) {
+	// nolint:gosec // accept configuration file as input
 	file, err := os.Open(configFile)
 	if err != nil {
 		return Config{}, fmt.Errorf("error opening config file: %v", err)
@@ -116,7 +264,7 @@ func parseConfigFile() (Config, error) {
 }
 
 func main() {
-	cfg, err := parseConfigFile()
+	cfg, err := parseConfigs()
 	if err != nil {
 		log.Fatalf("Failed to parse config file: %v", err)
 	}
@@ -137,7 +285,7 @@ func main() {
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	routes, err := NewRoutes(ctx, cfg.ProxyConfig, upstreamURL)
+	routes, err := NewRoutes(ctx, cfg.ProxyConfig, cfg.UnsafePassthroughPaths, upstreamURL)
 	if err != nil {
 		log.Fatalf("Failed to create proxymw Routes: %v", err)
 	}

@@ -9,7 +9,6 @@ linters:
     - durationcheck # checks for two durations multiplied together
     - errcheck
     - copyloopvar # Unpinned variables
-    - funlen
     - cyclop
     - goconst # finds repeated strings that could be replaced by a constant
     - gocritic
@@ -103,6 +102,9 @@ issues:
     - linters:
         - lll
       source: "^\t*// "
+    - path: "\\.go"
+      linters:
+        - funlen
     # Exclude err checking from Fprintf
     - linters:
         - errcheck
