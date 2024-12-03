@@ -1,5 +1,6 @@
 upstream: http://localhost:9095
-insecure_listen_addr: 127.0.0.1:7777
+insecure_listen_addr: 0.0.0.0:7777
+internal_listen_addr: 0.0.0.0:7776
 proxymw_config:
   enable_jitter: true
   jitter_delay: 5s

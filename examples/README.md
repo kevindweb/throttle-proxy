@@ -8,13 +8,14 @@
 
 ### Config File
 
-`throttle-proxy -f examples/config.yaml`
+`throttle-proxy -config-file examples/config.yaml`
 
 ### CLI Flags
 
 ```
 throttle-proxy -upstream=http://localhost:9095 \
-    -insecure-listen-address=127.0.0.1:7777 \
+    -insecure-listen-address=0.0.0.0:7777 \
+    -internal-listen-address=0.0.0.0:7776 \
     -unsafe-passthrough-paths=/api/v2 \
     -enable-jitter=true \
     -jitter-delay=3s \

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -17,11 +18,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/metalmatze/signal/internalserver"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 	"gopkg.in/yaml.v3"
 
 	"github.com/kevindweb/throttle-proxy/proxymw"
+	_ "go.uber.org/automaxprocs"
 )
 
 type routes struct {
@@ -84,8 +86,10 @@ func (r *routes) passthrough(w http.ResponseWriter, req *http.Request) {
 }
 
 type Config struct {
-	// InsecureListenAddresss is the address the proxy HTTP server should listen on
+	// InsecureListenAddress is the address the proxy HTTP server should listen on
 	InsecureListenAddress string `yaml:"insecure_listen_addr"`
+	// InternalListenAddress is the address the HTTP server should listen on for pprof and metrics
+	InternalListenAddress string `yaml:"internal_listen_addr"`
 	// Upstream is the upstream URL to proxy to
 	Upstream               string         `yaml:"upstream"`
 	UnsafePassthroughPaths []string       `yaml:"unsafe_passthrough_paths"`
@@ -125,6 +129,7 @@ func (f *Float64Slice) Set(value string) error {
 func parseConfigs() (Config, error) {
 	var (
 		insecureListenAddress           string
+		internalListenAddress           string
 		upstream                        string
 		unsafePassthroughPaths          string
 		enableBackpressure              bool
@@ -145,6 +150,10 @@ func parseConfigs() (Config, error) {
 	flagset.StringVar(
 		&insecureListenAddress, "insecure-listen-address", "",
 		"The address the proxy HTTP server should listen on.",
+	)
+	flagset.StringVar(
+		&internalListenAddress, "internal-listen-address", "",
+		"The address the internal HTTP server should listen on to expose metrics about itself.",
 	)
 	flagset.StringVar(&upstream, "upstream", "", "The upstream URL to proxy to.")
 	flagset.BoolVar(&enableJitter, "enable-jitter", false, "Use the jitter middleware")
@@ -229,6 +238,7 @@ func parseConfigs() (Config, error) {
 
 	return Config{
 		InsecureListenAddress:  insecureListenAddress,
+		InternalListenAddress:  internalListenAddress,
 		Upstream:               upstream,
 		UnsafePassthroughPaths: strings.Split(unsafePassthroughPaths, ","),
 		ProxyConfig: proxymw.Config{
@@ -269,25 +279,59 @@ func main() {
 		log.Fatalf("Failed to parse config file: %v", err)
 	}
 
+	ctx := context.Background()
+	servers := make([]*http.Server, 0, 2)
+	insecureServer, err := setupInsecureServer(ctx, cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if insecureServer != nil {
+		servers = append(servers, insecureServer)
+	}
+
+	internalServer, err := setupInternalServer(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if internalServer != nil {
+		servers = append(servers, internalServer)
+	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
+	defer cancel()
+
+	log.Println("\nShutting down servers...")
+	for _, srv := range servers {
+		if srv != nil {
+			if err := srv.Shutdown(ctx); err != nil {
+				log.Printf("server forced to shut down: %s\n", err)
+			} else {
+				log.Println("server gracefully stopped")
+			}
+		}
+	}
+}
+
+func setupInsecureServer(ctx context.Context, cfg Config) (*http.Server, error) {
 	upstreamURL, err := url.Parse(cfg.Upstream)
 	if err != nil {
-		log.Fatalf("Failed to build parse upstream URL: %v", err)
+		return nil, fmt.Errorf("failed to parse upstream URL: %v", err)
 	}
 
 	if upstreamURL.Scheme != "http" && upstreamURL.Scheme != "https" {
-		log.Fatalf("Invalid scheme for upstream URL %q, only 'http' and 'https' are supported", cfg.Upstream)
+		return nil, fmt.Errorf(
+			"invalid scheme for upstream URL %q, only 'http' and 'https' are supported",
+			cfg.Upstream,
+		)
 	}
 
-	reg := prometheus.NewRegistry()
-	reg.MustRegister(
-		collectors.NewGoCollector(),
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-	)
-
-	ctx, cancel := context.WithCancel(context.Background())
 	routes, err := NewRoutes(ctx, cfg.ProxyConfig, cfg.UnsafePassthroughPaths, upstreamURL)
 	if err != nil {
-		log.Fatalf("Failed to create proxymw Routes: %v", err)
+		return nil, fmt.Errorf("failed to create proxymw Routes: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -295,7 +339,7 @@ func main() {
 
 	l, err := net.Listen("tcp", cfg.InsecureListenAddress)
 	if err != nil {
-		log.Fatalf("Failed to listen on insecure address: %v", err)
+		return nil, fmt.Errorf("failed to listen on insecure address: %v", err)
 	}
 
 	srv := &http.Server{
@@ -304,23 +348,49 @@ func main() {
 		ReadTimeout:  time.Second,
 	}
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
 	go func() {
-		fmt.Printf("Listening on %s\n", l.Addr().String())
+		log.Printf("Listening on %s for routes\n", l.Addr().String())
 		if err := srv.Serve(l); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("Could not start server: %s\n", err)
+			log.Printf("Could not start server: %s\n", err)
 		}
 	}()
 
-	<-stop
-	cancel()
-	fmt.Println("\nShutting down server...")
+	return srv, nil
+}
 
-	if err := srv.Shutdown(ctx); err != nil {
-		fmt.Printf("Server forced to shut down: %s\n", err)
-	} else {
-		fmt.Println("Server gracefully stopped")
+func setupInternalServer(cfg Config) (*http.Server, error) {
+	if cfg.InternalListenAddress == "" {
+		return nil, nil
 	}
+
+	reg, ok := prometheus.DefaultRegisterer.(*prometheus.Registry)
+	if !ok {
+		return nil, errors.New("failed to set up default registerer")
+	}
+
+	h := internalserver.NewHandler(
+		internalserver.WithName("Internal throttle-proxy API"),
+		internalserver.WithPrometheusRegistry(reg),
+		internalserver.WithPProf(),
+	)
+
+	l, err := net.Listen("tcp", cfg.InternalListenAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on internal address: %v", err)
+	}
+
+	srv := &http.Server{
+		Handler:      h,
+		WriteTimeout: time.Second,
+		ReadTimeout:  time.Second,
+	}
+
+	go func() {
+		log.Printf("Listening on %s for metrics and pprof", l.Addr().String())
+		if err := srv.Serve(l); err != nil && err != http.ErrServerClosed {
+			log.Printf("Could not start server: %s\n", err)
+		}
+	}()
+
+	return srv, nil
 }
