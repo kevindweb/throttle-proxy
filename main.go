@@ -94,6 +94,8 @@ type Config struct {
 	Upstream               string         `yaml:"upstream"`
 	UnsafePassthroughPaths []string       `yaml:"unsafe_passthrough_paths"`
 	ProxyConfig            proxymw.Config `yaml:"proxymw_config"`
+	ReadTimeout            string         `yaml:"proxy_read_timeout"`
+	WriteTimeout           string         `yaml:"proxy_write_timeout"`
 }
 
 type StringSlice []string
@@ -130,6 +132,8 @@ func parseConfigs() (Config, error) {
 	var (
 		insecureListenAddress           string
 		internalListenAddress           string
+		readTimeout                     string
+		writeTimeout                    string
 		upstream                        string
 		unsafePassthroughPaths          string
 		enableBackpressure              bool
@@ -154,6 +158,14 @@ func parseConfigs() (Config, error) {
 	flagset.StringVar(
 		&internalListenAddress, "internal-listen-address", "",
 		"The address the internal HTTP server should listen on to expose metrics about itself.",
+	)
+	flagset.StringVar(
+		&readTimeout, "proxy-read-timeout", (time.Minute * 5).String(),
+		"HTTP read timeout duration",
+	)
+	flagset.StringVar(
+		&writeTimeout, "proxy-write-timeout", (time.Minute * 5).String(),
+		"HTTP write timeout duration",
 	)
 	flagset.StringVar(&upstream, "upstream", "", "The upstream URL to proxy to.")
 	flagset.BoolVar(&enableJitter, "enable-jitter", false, "Use the jitter middleware")
@@ -239,6 +251,8 @@ func parseConfigs() (Config, error) {
 	return Config{
 		InsecureListenAddress:  insecureListenAddress,
 		InternalListenAddress:  internalListenAddress,
+		ReadTimeout:            readTimeout,
+		WriteTimeout:           writeTimeout,
 		Upstream:               upstream,
 		UnsafePassthroughPaths: strings.Split(unsafePassthroughPaths, ","),
 		ProxyConfig: proxymw.Config{
@@ -342,10 +356,20 @@ func setupInsecureServer(ctx context.Context, cfg Config) (*http.Server, error) 
 		return nil, fmt.Errorf("failed to listen on insecure address: %v", err)
 	}
 
+	readTimeout, err := time.ParseDuration(cfg.ReadTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing read timeout: %v", err)
+	}
+
+	writeTimeout, err := time.ParseDuration(cfg.WriteTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing write timeout: %v", err)
+	}
+
 	srv := &http.Server{
 		Handler:      mux,
-		WriteTimeout: time.Second,
-		ReadTimeout:  time.Second,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 	}
 
 	go func() {
@@ -379,10 +403,20 @@ func setupInternalServer(cfg Config) (*http.Server, error) {
 		return nil, fmt.Errorf("failed to listen on internal address: %v", err)
 	}
 
+	readTimeout, err := time.ParseDuration(cfg.ReadTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing read timeout: %v", err)
+	}
+
+	writeTimeout, err := time.ParseDuration(cfg.WriteTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing write timeout: %v", err)
+	}
+
 	srv := &http.Server{
 		Handler:      h,
-		WriteTimeout: time.Second,
-		ReadTimeout:  time.Second,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 	}
 
 	go func() {

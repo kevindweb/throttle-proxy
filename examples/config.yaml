@@ -1,6 +1,10 @@
 upstream: http://localhost:9095
 insecure_listen_addr: 0.0.0.0:7777
 internal_listen_addr: 0.0.0.0:7776
+unsafe_passthrough_paths:
+  - /api/v2
+proxy_read_timeout: 5s
+proxy_write_timeout: 5s
 proxymw_config:
   enable_jitter: true
   jitter_delay: 5s
