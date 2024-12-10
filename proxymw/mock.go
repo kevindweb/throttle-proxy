@@ -9,8 +9,8 @@ import (
 type Mocker struct {
 	ServeHTTPFunc func(w http.ResponseWriter, r *http.Request)
 	RoundTripFunc func(r *http.Request) (*http.Response, error)
-	NextFunc      func(Request) error
 	InitFunc      func(context.Context)
+	NextFunc      func(Request) error
 }
 
 var _ http.Handler = &Mocker{}

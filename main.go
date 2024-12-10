@@ -22,8 +22,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 
-	"github.com/kevindweb/throttle-proxy/proxymw"
 	_ "go.uber.org/automaxprocs"
+
+	"github.com/kevindweb/throttle-proxy/proxymw"
 )
 
 type routes struct {
@@ -149,7 +150,7 @@ func parseConfigs() (Config, error) {
 		configFile                      string
 	)
 
-	flagset := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	flagset := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flagset.StringVar(&configFile, "config-file", "", "Config file to initialize the proxy")
 	flagset.StringVar(
 		&insecureListenAddress, "insecure-listen-address", "",
@@ -216,23 +217,9 @@ func parseConfigs() (Config, error) {
 		return parseConfigFile(configFile)
 	}
 
-	for _, path := range strings.Split(unsafePassthroughPaths, ",") {
-		u, err := url.Parse(fmt.Sprintf("http://example.com%v", path))
-		if err != nil {
-			return Config{}, fmt.Errorf(
-				"path %q is not a valid URI path, got %v", path, unsafePassthroughPaths,
-			)
-		}
-		if u.Path != path {
-			return Config{}, fmt.Errorf(
-				"path %q is not a valid URI path, got %v", path, unsafePassthroughPaths,
-			)
-		}
-		if u.Path == "" || u.Path == "/" {
-			return Config{}, fmt.Errorf(
-				"path %q is not allowed, got %v", u.Path, unsafePassthroughPaths,
-			)
-		}
+	unsafePaths, err := parseUnsafePaths(unsafePassthroughPaths)
+	if err != nil {
+		return Config{}, err
 	}
 
 	n := len(backpressureQueries)
@@ -240,6 +227,13 @@ func parseConfigs() (Config, error) {
 	if len(backpressureWarnThresholds) != n {
 		return Config{}, fmt.Errorf("expected %d warn thresholds for %d backpressure queries", n, n)
 	}
+
+	if len(backpressureEmergencyThresholds) != n {
+		return Config{}, fmt.Errorf(
+			"expected %d emergency thresholds for %d backpressure queries", n, n,
+		)
+	}
+
 	for i, query := range backpressureQueries {
 		queries[i] = proxymw.BackpressureQuery{
 			Query:              query,
@@ -254,7 +248,7 @@ func parseConfigs() (Config, error) {
 		ReadTimeout:            readTimeout,
 		WriteTimeout:           writeTimeout,
 		Upstream:               upstream,
-		UnsafePassthroughPaths: strings.Split(unsafePassthroughPaths, ","),
+		UnsafePassthroughPaths: unsafePaths,
 		ProxyConfig: proxymw.Config{
 			EnableJitter:   enableJitter,
 			JitterDelay:    jitterDelay,
@@ -268,6 +262,33 @@ func parseConfigs() (Config, error) {
 			},
 		},
 	}, nil
+}
+
+func parseUnsafePaths(unsafePaths string) ([]string, error) {
+	if unsafePaths == "" {
+		return []string{}, nil
+	}
+
+	paths := strings.Split(unsafePaths, ",")
+	for _, path := range paths {
+		u, err := url.Parse(fmt.Sprintf("http://example.com%v", path))
+		if err != nil {
+			return nil, fmt.Errorf(
+				"path %q is not a valid URI path, got %v", path, unsafePaths,
+			)
+		}
+		if u.Path != path {
+			return nil, fmt.Errorf(
+				"path %q is not a valid URI path, got %v", path, unsafePaths,
+			)
+		}
+		if u.Path == "" || u.Path == "/" {
+			return nil, fmt.Errorf(
+				"path %q is not allowed, got %v", u.Path, unsafePaths,
+			)
+		}
+	}
+	return paths, nil
 }
 
 func parseConfigFile(configFile string) (Config, error) {
