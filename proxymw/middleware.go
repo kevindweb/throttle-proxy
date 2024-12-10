@@ -30,6 +30,12 @@ type ResponseWriter interface {
 	ResponseWriter() http.ResponseWriter
 }
 
+var (
+	_ Request        = &RequestResponseWrapper{}
+	_ Response       = &RequestResponseWrapper{}
+	_ ResponseWriter = &RequestResponseWrapper{}
+)
+
 type RequestResponseWrapper struct {
 	req *http.Request
 	res *http.Response
@@ -58,7 +64,6 @@ type Config struct {
 	EnableJitter       bool          `yaml:"enable_jitter"`
 	JitterDelay        time.Duration `yaml:"jitter_delay"`
 	EnableObserver     bool          `yaml:"enable_observer"`
-	EnableLatency      bool          `yaml:"enable_latency"`
 }
 
 // APIErrorResponse represents the standard error response format
@@ -67,11 +72,6 @@ type APIErrorResponse struct {
 	ErrorType string `json:"errorType"`
 	Error     string `json:"error"`
 }
-
-const (
-	ErrorTypeProxyQuery = "query-proxy"
-	ContentTypeJSON     = "application/json; charset=utf-8"
-)
 
 // Validate ensures all enabled features have proper configuration
 func (c Config) Validate() error {
@@ -101,7 +101,6 @@ type ServeEntry struct {
 // 2. Metrics collection (Observer)
 // 3. Request spreading (Jitter)
 // 4. Adaptive rate limiting (Backpressure)
-// 5. Throttling by request latency (LatencyTracker)
 // 6. Final handler (Exit)
 func NewServeFromConfig(cfg Config, next http.HandlerFunc) (*ServeEntry, error) {
 	var client ProxyClient = &ServeExit{next: next}
@@ -118,10 +117,6 @@ func NewServeFromConfig(cfg Config, next http.HandlerFunc) (*ServeEntry, error) 
 func NewFromConfig(cfg Config, client ProxyClient) (ProxyClient, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
-	}
-
-	if cfg.EnableLatency {
-		client = NewLatencyTracker(client, cfg.CongestionWindowMin, cfg.CongestionWindowMax)
 	}
 
 	if cfg.EnableBackpressure {
@@ -246,7 +241,7 @@ func (rte *RoundTripperExit) Init(_ context.Context) {}
 func (rte *RoundTripperExit) Next(r Request) error {
 	rr, ok := r.(Response)
 	if !ok {
-		return fmt.Errorf("request is of type %T not RequestResponseWriter", rr)
+		return fmt.Errorf("request is of type %T not Response", rr)
 	}
 
 	req := r.Request()
@@ -261,13 +256,13 @@ func (rte *RoundTripperExit) Next(r Request) error {
 
 // writeAPIError writes a standardized error response
 func writeAPIError(w http.ResponseWriter, errorMessage string, code int) {
-	w.Header().Set("Content-Type", ContentTypeJSON)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(code)
 
 	response := APIErrorResponse{
 		Status:    "error",
-		ErrorType: ErrorTypeProxyQuery,
+		ErrorType: "query-proxy",
 		Error:     errorMessage,
 	}
 

@@ -16,9 +16,6 @@ var (
 	ErrNegativeQueryThresholds     = errors.New("backpressure query thresholds cannot be negative")
 	ErrEmergencyBelowWarnThreshold = errors.New("emergency threshold must be > warn threshold")
 
-	ErrLatencyBackoff = BlockErr(
-		LatencyProxyType, "congestion window closed, backoff from slow queries",
-	)
 	ErrBackpressureBackoff = BlockErr(
 		BackpressureProxyType,
 		"congestion window closed, backoff from backpressure",
