@@ -22,14 +22,15 @@ const (
 	BackpressureUpdateCadence = 30 * time.Second
 	MonitorQueryTimeout       = 15 * time.Second
 	DefaultThrottleCurve      = 4.0
-	DefaultMaxIdleConns       = 100
-	DefaultIdleConnTimeout    = 90 * time.Second
 	InstantQueryEndpoint      = "/api/v1/query"
 )
 
 var (
-	bpWatermarkGauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_watermark"})
-	bpAllowanceGauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_allowance"})
+	bpWatermarkGauge  = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_watermark"})
+	bpAllowanceGauge  = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_allowance"})
+	bpQueryErrCounter = promauto.NewGauge(
+		prometheus.GaugeOpts{Name: "proxymw_bp_query_error_count"},
+	)
 )
 
 type PrometheusResponse struct {
@@ -53,6 +54,9 @@ func (q BackpressureQuery) Validate() error {
 	if _, err := parser.ParseExpr(q.Query); err != nil {
 		return fmt.Errorf("invalid PromQL query %q: %w", q.Query, err)
 	}
+	if wrappedInQuotes(q.Query) {
+		return ErrExtraQueryQuotes
+	}
 	if q.ThrottlingCurve < 0 {
 		return ErrNegativeThrottleCurve
 	}
@@ -63,6 +67,17 @@ func (q BackpressureQuery) Validate() error {
 		return ErrEmergencyBelowWarnThreshold
 	}
 	return nil
+}
+
+func wrappedInQuotes(query string) bool {
+	if len(query) < 2 {
+		return false
+	}
+
+	firstChar := query[0]
+	lastChar := query[len(query)-1]
+	return (firstChar == '\'' && lastChar == '\'') ||
+		(firstChar == '"' && lastChar == '"')
 }
 
 func (q BackpressureQuery) throttlePercent(curr float64) float64 {
@@ -140,6 +155,7 @@ type Backpressure struct {
 	min, max       int
 	watermarkGauge prometheus.Gauge
 	allowanceGauge prometheus.Gauge
+	queryErrCount  prometheus.Counter
 
 	monitorClient *http.Client
 	monitorURL    string
@@ -166,12 +182,10 @@ func NewBackpressure(
 		allowance:      1,
 		watermarkGauge: bpWatermarkGauge,
 		allowanceGauge: bpAllowanceGauge,
+		queryErrCount:  bpQueryErrCounter,
 		monitorClient: &http.Client{
-			Timeout: MonitorQueryTimeout,
-			Transport: &http.Transport{
-				MaxIdleConns:    DefaultMaxIdleConns,
-				IdleConnTimeout: DefaultIdleConnTimeout,
-			},
+			Timeout:   MonitorQueryTimeout,
+			Transport: http.DefaultTransport,
 		},
 		monitorURL: monitorURL,
 		queries:    queries,
@@ -180,7 +194,7 @@ func NewBackpressure(
 }
 
 func (bp *Backpressure) Init(ctx context.Context) {
-	bp.allowanceGauge.Set(float64(bp.allowance))
+	bp.allowanceGauge.Set(bp.allowance)
 	bp.watermarkGauge.Set(float64(bp.watermark))
 	bp.metricsLoop(ctx)
 	bp.client.Init(ctx)
@@ -218,6 +232,7 @@ func (bp *Backpressure) metricLoop(ctx context.Context, q BackpressureQuery) {
 		case <-ticker.C:
 			curr, err := bp.metricFired(ctx, q.Query)
 			if err != nil {
+				bp.queryErrCount.Inc()
 				log.Printf("querying metric '%s' returned error: %v", q.Query, err)
 				continue
 			}
@@ -235,6 +250,7 @@ func (bp *Backpressure) updateThrottle(q BackpressureQuery, curr float64) {
 	bp.throttleFlags.Range(func(_, value interface{}) bool {
 		val, ok := value.(float64)
 		if !ok {
+			bp.queryErrCount.Inc()
 			log.Printf("error updating query '%s' throttle to %f: %v", q.Query, curr, err)
 			return true
 		}
@@ -245,7 +261,8 @@ func (bp *Backpressure) updateThrottle(q BackpressureQuery, curr float64) {
 
 	bp.mu.Lock()
 	bp.allowance = 1 - throttlePercent
-	bp.allowanceGauge.Set(float64(bp.allowance))
+	bp.allowanceGauge.Set(bp.allowance)
+	bp.constrainWatermark()
 	bp.mu.Unlock()
 }
 
@@ -269,8 +286,8 @@ func (bp *Backpressure) metricFired(ctx context.Context, query string) (float64,
 	if err != nil {
 		return 0, fmt.Errorf("execute request: %w", err)
 	}
-	defer resp.Body.Close()
 
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
@@ -282,10 +299,15 @@ func (bp *Backpressure) metricFired(ctx context.Context, query string) (float64,
 
 	results := prometheusResp.Data.Result
 	if len(results) != 1 {
-		return 0, fmt.Errorf("query must return exactly one value: %s", query)
+		return 0, fmt.Errorf("backpressure query must return exactly one value: %s", query)
 	}
 
-	return float64(results[0].Value), nil
+	res := float64(results[0].Value)
+	if res < 0 {
+		return 0, fmt.Errorf("backpressure query (%s) must have non-negative value: %f", query, res)
+	}
+
+	return res, nil
 }
 
 // check ensures the number of concurrent active requests stays within the allowed window.
@@ -315,7 +337,14 @@ func (bp *Backpressure) release() {
 	defer bp.mu.Unlock()
 
 	bp.active = max(0, bp.active-1)
-	bp.watermark = min(bp.watermark+1, int(float64(bp.max)*bp.allowance))
+	bp.watermark++
+	bp.constrainWatermark()
+}
+
+// constrainWatermark ensures that watermark never goes above the allowed max or below the min.
+// Assumes the callsite already holds the lock and updates the metric gauge.
+func (bp *Backpressure) constrainWatermark() {
+	bp.watermark = min(bp.watermark, int(float64(bp.max)*bp.allowance))
 	bp.watermark = max(bp.watermark, bp.min)
 	bp.watermarkGauge.Set(float64(bp.watermark))
 }

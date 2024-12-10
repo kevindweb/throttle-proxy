@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,6 +17,9 @@ import (
 func TestBackpressureRelease(t *testing.T) {
 	belowMinWatermarkGauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{Name: "fake_wm_gauge_below_min"},
+	)
+	atAllowanceWatermarkGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{Name: "fake_wm_gauge_at_allowance"},
 	)
 	belowAllowanceWatermarkGauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{Name: "fake_wm_gauge_below_allowance"},
@@ -42,6 +46,25 @@ func TestBackpressureRelease(t *testing.T) {
 				allowance:      0.25,
 				active:         0,
 				watermarkGauge: belowAllowanceWatermarkGauge,
+			},
+		},
+		{
+			name: "watermark at allowance",
+			bp: &Backpressure{
+				min:            10,
+				watermark:      100,
+				max:            100,
+				allowance:      0.99999999999,
+				active:         0,
+				watermarkGauge: atAllowanceWatermarkGauge,
+			},
+			expect: &Backpressure{
+				min:            10,
+				watermark:      99,
+				max:            100,
+				allowance:      0.99999999999,
+				active:         0,
+				watermarkGauge: atAllowanceWatermarkGauge,
 			},
 		},
 		{
@@ -82,7 +105,7 @@ func TestMetricFired(t *testing.T) {
 	}{
 		{
 			name:  "error response",
-			err:   errors.New("query must return exactly one value: sum(throughput)"),
+			err:   errors.New("backpressure query must return exactly one value: sum(throughput)"),
 			query: "sum(throughput)",
 			bp: &Backpressure{
 				monitorURL: u,
@@ -166,6 +189,85 @@ func TestMetricFired(t *testing.T) {
 			val, err := tt.bp.metricFired(context.Background(), tt.query)
 			require.Equal(t, tt.err, err)
 			require.Equal(t, tt.val, val)
+		})
+	}
+}
+
+func TestUpdateThrottle(t *testing.T) {
+	testGauge := prometheus.NewGauge(
+		prometheus.GaugeOpts{Name: "fake_gauge_sensitive_bp_query"},
+	)
+	for _, tt := range []struct {
+		name   string
+		bp     *Backpressure
+		setup  func(*Backpressure)
+		query  BackpressureQuery
+		update float64
+		expect *Backpressure
+	}{
+		{
+			name: "new query over emergency",
+			bp: &Backpressure{
+				min:            10,
+				watermark:      80,
+				max:            100,
+				allowance:      0.2,
+				throttleFlags:  sync.Map{},
+				watermarkGauge: testGauge,
+				allowanceGauge: testGauge,
+			},
+			setup: func(b *Backpressure) {},
+			query: BackpressureQuery{
+				Query:              `sum(rate(http_requests))`,
+				WarningThreshold:   10,
+				EmergencyThreshold: 100,
+				ThrottlingCurve:    DefaultThrottleCurve,
+			},
+			update: 1000,
+			expect: &Backpressure{
+				min:            10,
+				watermark:      10,
+				max:            100,
+				allowance:      0,
+				watermarkGauge: testGauge,
+				allowanceGauge: testGauge,
+			},
+		},
+		{
+			name: "new query more sensitive than previous",
+			bp: &Backpressure{
+				min:            10,
+				watermark:      80,
+				max:            100,
+				allowance:      0.2,
+				throttleFlags:  sync.Map{},
+				watermarkGauge: testGauge,
+				allowanceGauge: testGauge,
+			},
+			setup: func(b *Backpressure) {
+				b.throttleFlags.Store("previous", 0.8)
+			},
+			query: BackpressureQuery{
+				Query:              `sum(rate(http_requests))`,
+				WarningThreshold:   10,
+				EmergencyThreshold: 100,
+				ThrottlingCurve:    DefaultThrottleCurve,
+			},
+			update: 30,
+			expect: &Backpressure{
+				min:            10,
+				watermark:      41,
+				max:            100,
+				allowance:      0.41111229050718745, // calculated from 1-e^(-c * loadFactor)
+				watermarkGauge: testGauge,
+				allowanceGauge: testGauge,
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.bp.updateThrottle(tt.query, tt.update)
+			tt.bp.throttleFlags = sync.Map{}
+			require.Equal(t, tt.expect, tt.bp)
 		})
 	}
 }

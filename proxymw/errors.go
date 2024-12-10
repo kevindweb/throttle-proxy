@@ -15,6 +15,7 @@ var (
 	ErrNegativeThrottleCurve       = errors.New("throttle curve cannot be negative")
 	ErrNegativeQueryThresholds     = errors.New("backpressure query thresholds cannot be negative")
 	ErrEmergencyBelowWarnThreshold = errors.New("emergency threshold must be > warn threshold")
+	ErrExtraQueryQuotes            = errors.New("backpressure PromQL cannot be wrapped in quotes")
 
 	ErrBackpressureBackoff = BlockErr(
 		BackpressureProxyType,

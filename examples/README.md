@@ -6,9 +6,13 @@
 
 ## Run
 
+`make build`
+
 ### Config File
 
-`throttle-proxy -config-file examples/config.yaml`
+```
+throttle-proxy -config-file examples/config.yaml
+```
 
 ### CLI Flags
 
