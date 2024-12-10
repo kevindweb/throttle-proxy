@@ -125,6 +125,20 @@ func TestConfig(t *testing.T) {
 			err: ErrBackpressureQueryRequired,
 		},
 		{
+			name: "promQL wrapped in extraneous quotes",
+			cfg: Config{
+				BackpressureConfig: BackpressureConfig{
+					EnableBackpressure: true,
+					BackpressureQueries: []BackpressureQuery{
+						{
+							Query: "'sum(rate(http_requests))'",
+						},
+					},
+				},
+			},
+			err: ErrExtraQueryQuotes,
+		},
+		{
 			name: "inverted congestion window",
 			cfg: Config{
 				BackpressureConfig: BackpressureConfig{

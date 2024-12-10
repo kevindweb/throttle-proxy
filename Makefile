@@ -1,4 +1,16 @@
-.PHONY: lint fmt lintfix test checkpath check cover test-norace deps
+.PHONY: all build lint fmt lintfix test checkpath check cover test-norace deps
+
+GO = go
+GOIMPORTS = goimports
+
+all: build
+
+build: throttle-proxy
+
+throttle-proxy: $(wildcard **/*.go)
+	@echo ">> building binaries..."
+	@$(GO) build -o throttle-proxy github.com/kevindweb/throttle-proxy
+
 checkpath:
 ifeq ("","$(shell which go)")
 	$(error go binary not in PATH)
@@ -10,7 +22,7 @@ ifeq ("","$(shell which golangci-lint)")
 endif
 
 lint: fmt
-	goimports -l -w -local $(shell head -n 1 go.mod | cut -d ' ' -f 2) .
+	@$(GOIMPORTS) -l -w -local $(shell head -n 1 go.mod | cut -d ' ' -f 2) .
 	@golangci-lint run
 
 fmt:
