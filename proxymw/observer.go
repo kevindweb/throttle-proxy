@@ -53,11 +53,6 @@ func (o *Observer) Next(rr Request) error {
 	o.activeGauge.Inc()
 	start := time.Now()
 	err := o.client.Next(rr)
-	o.handleMetrics(err, start)
-	return err
-}
-
-func (o *Observer) handleMetrics(err error, start time.Time) {
 	if err != nil {
 		var blocked *RequestBlockedError
 		if errors.As(err, &blocked) {
@@ -70,4 +65,5 @@ func (o *Observer) handleMetrics(err error, start time.Time) {
 	o.reqCounter.Inc()
 	o.latencyCounter.Add(float64(time.Since(start).Milliseconds()))
 	o.activeGauge.Dec()
+	return err
 }

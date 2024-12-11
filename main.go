@@ -352,16 +352,23 @@ func main() {
 }
 
 func setupInsecureServer(ctx context.Context, cfg Config) (*http.Server, error) {
-	upstreamURL, err := url.Parse(cfg.Upstream)
+	upstreamURL, err := parseUpstream(cfg.Upstream)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse upstream URL: %v", err)
+		return nil, err
 	}
 
-	if upstreamURL.Scheme != "http" && upstreamURL.Scheme != "https" {
-		return nil, fmt.Errorf(
-			"invalid scheme for upstream URL %q, only 'http' and 'https' are supported",
-			cfg.Upstream,
-		)
+	readTimeout, err := time.ParseDuration(cfg.ReadTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing read timeout: %v", err)
+	}
+
+	writeTimeout, err := time.ParseDuration(cfg.WriteTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing write timeout: %v", err)
+	}
+
+	if cfg.ProxyConfig.ClientTimeout == 0 {
+		cfg.ProxyConfig.ClientTimeout = 2 * readTimeout
 	}
 
 	routes, err := NewRoutes(ctx, cfg.ProxyConfig, cfg.UnsafePassthroughPaths, upstreamURL)
@@ -375,16 +382,6 @@ func setupInsecureServer(ctx context.Context, cfg Config) (*http.Server, error) 
 	l, err := net.Listen("tcp", cfg.InsecureListenAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen on insecure address: %v", err)
-	}
-
-	readTimeout, err := time.ParseDuration(cfg.ReadTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing read timeout: %v", err)
-	}
-
-	writeTimeout, err := time.ParseDuration(cfg.WriteTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing write timeout: %v", err)
 	}
 
 	srv := &http.Server{
@@ -401,6 +398,22 @@ func setupInsecureServer(ctx context.Context, cfg Config) (*http.Server, error) 
 	}()
 
 	return srv, nil
+}
+
+func parseUpstream(upstream string) (*url.URL, error) {
+	upstreamURL, err := url.Parse(upstream)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse upstream URL: %v", err)
+	}
+
+	if upstreamURL.Scheme != "http" && upstreamURL.Scheme != "https" {
+		return nil, fmt.Errorf(
+			"invalid scheme for upstream URL %q, only 'http' and 'https' are supported",
+			upstream,
+		)
+	}
+
+	return upstreamURL, nil
 }
 
 func setupInternalServer(cfg Config) (*http.Server, error) {

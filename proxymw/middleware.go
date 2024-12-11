@@ -64,6 +64,7 @@ type Config struct {
 	EnableJitter       bool          `yaml:"enable_jitter"`
 	JitterDelay        time.Duration `yaml:"jitter_delay"`
 	EnableObserver     bool          `yaml:"enable_observer"`
+	ClientTimeout      time.Duration `yaml:"client_timeout"`
 }
 
 // APIErrorResponse represents the standard error response format
@@ -92,7 +93,8 @@ func (c Config) Validate() error {
 
 // ServeEntry represents the entry point of the middleware chain
 type ServeEntry struct {
-	client ProxyClient
+	client  ProxyClient
+	timeout time.Duration
 }
 
 // NewServeFromConfig constructs a middleware chain based on configuration.
@@ -111,7 +113,10 @@ func NewServeFromConfig(cfg Config, next http.HandlerFunc) (*ServeEntry, error) 
 		return nil, err
 	}
 
-	return &ServeEntry{client: client}, nil
+	return &ServeEntry{
+		client:  client,
+		timeout: cfg.ClientTimeout,
+	}, nil
 }
 
 func NewFromConfig(cfg Config, client ProxyClient) (ProxyClient, error) {
@@ -143,10 +148,13 @@ func NewFromConfig(cfg Config, client ProxyClient) (ProxyClient, error) {
 // Proxy returns an http.Handler that processes requests through the middleware chain
 func (se *ServeEntry) Proxy() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), se.timeout)
+		defer cancel()
 		rr := &RequestResponseWrapper{
 			w:   w,
-			req: r,
+			req: r.WithContext(ctx),
 		}
+
 		err := se.client.Next(rr)
 		if err == nil {
 			return
