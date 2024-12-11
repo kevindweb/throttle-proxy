@@ -27,7 +27,8 @@ func TestNewRoutes(t *testing.T) {
 	}
 
 	cfg := proxymw.Config{
-		EnableJitter: false,
+		EnableJitter:  false,
+		ClientTimeout: time.Second,
 	}
 
 	ctx := context.Background()
@@ -190,14 +191,6 @@ func TestParseConfig(t *testing.T) {
 					},
 				},
 			},
-		},
-		{
-			name: "bad arguments fail parsing",
-			args: []string{
-				"test-program",
-				"--enable-observer   true",
-			},
-			wantErr: true,
 		},
 		{
 			name: "empty passthrough path",

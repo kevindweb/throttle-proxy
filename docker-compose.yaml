@@ -1,0 +1,53 @@
+services:
+  throttle-proxy:
+    build:
+      context: .
+      dockerfile: sandbox/Dockerfile.throttle-proxy
+    command: >
+      -upstream=http://prom:9090
+      -insecure-listen-address=0.0.0.0:7777
+      -internal-listen-address=0.0.0.0:7776
+      -proxy-write-timeout=1m
+      -proxy-read-timeout=1m
+      -unsafe-passthrough-paths=/graph,/static,/manifest.json,/api/v1
+      -enable-jitter=true
+      -jitter-delay=1s
+      -enable-observer=true
+      -enable-bp=true
+      -bp-monitoring-url=http://prom:9090
+      -bp-min-window=1
+      -bp-max-window=10
+      -bp-query=sum\(rate\(proxymw_request_count[1m]\)\)
+      -bp-warn=0.2
+      -bp-emergency=2
+    ports:
+      - 7777:7777
+      - 7776:7776
+
+  grafana:
+    image: grafana/grafana:11.1.7
+    container_name: grafana
+    ports:
+      - 3000:3000
+    volumes:
+      - ./sandbox/grafana/provisioning:/etc/grafana/provisioning
+      - ./sandbox/grafana/grafana.ini:/etc/grafana/grafana.ini
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_LOG_LEVEL=error
+    depends_on:
+      - prom
+
+  prom:
+    image: prom/prometheus
+    ports:
+      - 9090:9090
+    configs:
+      - prometheus.yml
+    command: --config.file=/prometheus.yml --log.level=debug
+    depends_on:
+      - throttle-proxy
+
+configs:
+  prometheus.yml:
+    file: sandbox/prometheus.yml

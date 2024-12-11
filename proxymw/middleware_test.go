@@ -5,9 +5,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -98,6 +101,69 @@ func TestMiddlewareOrder(t *testing.T) {
 	}
 	require.Equal(t, 1, rtCalls)
 	require.Equal(t, *r.Clone(ctx), *r)
+}
+
+func TestHangingClient(t *testing.T) {
+	ctx := context.Background()
+	config := Config{
+		EnableObserver: true,
+		ClientTimeout:  time.Millisecond,
+	}
+
+	var wg sync.WaitGroup
+	var wgInternal sync.WaitGroup
+	var wgInternal2 sync.WaitGroup
+	var wgInternal3 sync.WaitGroup
+	mock := &Mocker{
+		ServeHTTPFunc: func(_ http.ResponseWriter, r *http.Request) {
+			wgInternal2.Done()
+			wg.Wait()
+			defer wgInternal.Done()
+
+			testShouldTimeout := time.Hour
+			timer := time.NewTimer(testShouldTimeout)
+			defer timer.Stop()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-timer.C:
+				return
+			}
+		},
+	}
+
+	serve, err := NewServeFromConfig(config, mock.ServeHTTP)
+	require.NoError(t, err)
+
+	c := serve.client
+	observer := c.(*Observer)
+	activeRequests := prometheus.NewGauge(prometheus.GaugeOpts{Name: "hanging_requests"})
+	observer.activeGauge = activeRequests
+
+	serve.Init(ctx)
+	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://thanos.io", http.NoBody)
+	require.NoError(t, err)
+
+	w := &httptest.ResponseRecorder{}
+	wgInternal.Add(1)
+	wgInternal2.Add(1)
+	wgInternal3.Add(1)
+	wg.Add(1)
+	go func() {
+		serve.Proxy().ServeHTTP(w, r)
+		wgInternal3.Done()
+	}()
+
+	var metricWriter dto.Metric
+	wgInternal2.Wait()
+	observer.activeGauge.Write(&metricWriter)
+	require.Equal(t, float64(1), metricWriter.Gauge.GetValue())
+
+	wg.Done()
+	wgInternal.Wait()
+	wgInternal3.Wait()
+	observer.activeGauge.Write(&metricWriter)
+	require.Equal(t, float64(0), metricWriter.Gauge.GetValue())
 }
 
 func TestConfig(t *testing.T) {

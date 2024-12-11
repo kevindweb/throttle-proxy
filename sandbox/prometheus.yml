@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 1m
+  query_log_file: /prometheus/query.log # docker-compose exec -t prom /bin/sh -c "cat /prometheus/query.log"
+
+storage:
+  tsdb:
+
+scrape_configs:
+  - job_name: "throttle-proxy"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["throttle-proxy:7776"]

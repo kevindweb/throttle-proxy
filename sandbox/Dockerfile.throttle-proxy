@@ -1,0 +1,11 @@
+FROM golang:1.23-alpine AS builder
+COPY . /workdir
+RUN cd /workdir && CGO_ENABLED=0 GOOS=linux go build -o /tmp/throttle-proxy ./main.go
+
+FROM alpine:latest
+
+# Install CA certificates for HTTPS support
+RUN apk --no-cache add ca-certificates
+
+COPY --from=builder /tmp/throttle-proxy /usr/bin/throttle-proxy
+ENTRYPOINT [ "/usr/bin/throttle-proxy" ]
