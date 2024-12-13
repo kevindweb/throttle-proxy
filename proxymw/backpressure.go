@@ -28,8 +28,8 @@ const (
 var (
 	bpWatermarkGauge  = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_watermark"})
 	bpAllowanceGauge  = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_allowance"})
-	bpQueryErrCounter = promauto.NewGauge(
-		prometheus.GaugeOpts{Name: "proxymw_bp_query_error_count"},
+	bpQueryErrCounter = promauto.NewCounter(
+		prometheus.CounterOpts{Name: "proxymw_bp_query_error_count"},
 	)
 )
 
