@@ -108,7 +108,6 @@ func TestMetricFired(t *testing.T) {
 			err:   errors.New("backpressure query must return exactly one value: sum(throughput)"),
 			query: "sum(throughput)",
 			bp: &Backpressure{
-				monitorURL: u,
 				monitorClient: &http.Client{
 					Transport: &Mocker{
 						RoundTripFunc: func(r *http.Request) (*http.Response, error) {
@@ -126,6 +125,37 @@ func TestMetricFired(t *testing.T) {
 										  {
 									        "metric": {},
 									        "value": [1731988543.752, "95"]
+									      }
+									    ]
+									  }
+									}`)),
+								StatusCode: http.StatusOK,
+							}, nil
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "negative float error",
+			err: errors.New(
+				"backpressure query (sum(throughput)) must have non-negative value: -90.000000",
+			),
+			query: "sum(throughput)",
+			bp: &Backpressure{
+				monitorClient: &http.Client{
+					Transport: &Mocker{
+						RoundTripFunc: func(r *http.Request) (*http.Response, error) {
+							return &http.Response{
+								Body: io.NopCloser(bytes.NewBufferString(
+									`{
+									  "status": "success",
+									  "data": {
+									    "resultType": "vector",
+									    "result": [
+									      {
+									        "metric": {},
+									        "value": [1731988543.752, "-90"]
 									      }
 									    ]
 									  }

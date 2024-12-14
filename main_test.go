@@ -149,10 +149,12 @@ func TestParseConfig(t *testing.T) {
 				"--jitter-delay", "100ms",
 				"--enable-bp",
 				"--bp-monitoring-url", "http://metrics.example.com",
-				"--bp-query=sum(rate(http_requests))",
+				"--bp-query=sum(rate(http_request_count))",
+				"--bp-query-name", "http_rps",
 				"--bp-warn", "1000",
 				"--bp-emergency", "5000",
 				"--bp-query", "up{job='prometheus'} == 0",
+				"--bp-query-name", "up_jobs",
 				"--bp-warn", "0.5",
 				"--bp-emergency", "0.8",
 				"--bp-min-window", "10",
@@ -178,11 +180,13 @@ func TestParseConfig(t *testing.T) {
 						CongestionWindowMax:       100,
 						BackpressureQueries: []proxymw.BackpressureQuery{
 							{
-								Query:              "sum(rate(http_requests))",
+								Name:               "http_rps",
+								Query:              "sum(rate(http_request_count))",
 								WarningThreshold:   1000,
 								EmergencyThreshold: 5000,
 							},
 							{
+								Name:               "up_jobs",
 								Query:              "up{job='prometheus'} == 0",
 								WarningThreshold:   0.5,
 								EmergencyThreshold: 0.8,
