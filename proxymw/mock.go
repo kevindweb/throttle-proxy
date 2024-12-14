@@ -11,11 +11,13 @@ type Mocker struct {
 	RoundTripFunc func(r *http.Request) (*http.Response, error)
 	InitFunc      func(context.Context)
 	NextFunc      func(Request) error
+	RequestFunc   func() *http.Request
 }
 
 var _ http.Handler = &Mocker{}
 var _ http.RoundTripper = &Mocker{}
 var _ ProxyClient = &Mocker{}
+var _ Request = &Mocker{}
 
 func (m *Mocker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.ServeHTTPFunc(w, r)
@@ -31,4 +33,8 @@ func (m *Mocker) Init(ctx context.Context) {
 
 func (m *Mocker) Next(rr Request) error {
 	return m.NextFunc(rr)
+}
+
+func (m *Mocker) Request() *http.Request {
+	return m.RequestFunc()
 }
