@@ -36,6 +36,7 @@ func TestMiddlewareOrder(t *testing.T) {
 		JitterDelay:  time.Second,
 
 		EnableObserver: true,
+		ClientTimeout:  time.Hour,
 	}
 
 	serveCalls := 0

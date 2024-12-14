@@ -3,6 +3,7 @@ package proxymw
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -58,6 +59,34 @@ func TestObserverNextError(t *testing.T) {
 			},
 		},
 		{
+			name: "next panic",
+			observer: &Observer{
+				errCounter: prometheus.NewCounter(
+					prometheus.CounterOpts{Name: "block_test_error_count"},
+				),
+				blockCounter: prometheus.NewCounterVec(
+					prometheus.CounterOpts{Name: "block_test_block_count"}, []string{"mw_type"},
+				),
+				reqCounter: prometheus.NewCounter(
+					prometheus.CounterOpts{Name: "block_test_request_count"},
+				),
+				latencyCounter: prometheus.NewCounter(
+					prometheus.CounterOpts{Name: "block_test_request_latency_ms"},
+				),
+				activeGauge: prometheus.NewGauge(
+					prometheus.GaugeOpts{Name: "block_test_active_requests"},
+				),
+				client: &Mocker{
+					NextFunc: func(_ Request) error {
+						panic("here")
+					},
+					InitFunc: func(_ context.Context) {},
+				},
+			},
+			err:   "panic calling Next: here",
+			check: func(_ *testing.T, _ *Observer) {},
+		},
+		{
 			name: "normal error",
 			observer: &Observer{
 				errCounter: prometheus.NewCounter(
@@ -77,7 +106,6 @@ func TestObserverNextError(t *testing.T) {
 				),
 				client: &Mocker{
 					NextFunc: func(r Request) error {
-						require.Equal(t, nil, r)
 						return errors.New("fail")
 					},
 					InitFunc: func(_ context.Context) {
@@ -141,8 +169,14 @@ func TestObserverNextError(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tt.observer.Init(context.Background())
-			err := tt.observer.Next(nil)
+			ctx := context.Background()
+			tt.observer.Init(ctx)
+			rr := &Mocker{
+				RequestFunc: func() *http.Request {
+					return (&http.Request{}).WithContext(ctx)
+				},
+			}
+			err := tt.observer.Next(rr)
 			errStr := ""
 			if err != nil {
 				errStr = err.Error()

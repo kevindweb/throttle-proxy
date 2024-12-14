@@ -3,6 +3,7 @@ package proxymw
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -52,7 +53,7 @@ func (o *Observer) Init(ctx context.Context) {
 func (o *Observer) Next(rr Request) error {
 	o.activeGauge.Inc()
 	start := time.Now()
-	err := o.client.Next(rr)
+	err := o.executeNext(rr)
 	if err != nil {
 		var blocked *RequestBlockedError
 		if errors.As(err, &blocked) {
@@ -66,4 +67,26 @@ func (o *Observer) Next(rr Request) error {
 	o.latencyCounter.Add(float64(time.Since(start).Milliseconds()))
 	o.activeGauge.Dec()
 	return err
+}
+
+// executeNext runs next in a goroutine on the off chance Next hangs so we can still run cleanup
+func (o *Observer) executeNext(rr Request) error {
+	errc := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				errc <- fmt.Errorf("panic calling Next: %v", r)
+			}
+			close(errc)
+		}()
+		errc <- o.client.Next(rr)
+	}()
+
+	ctx := rr.Request().Context()
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
