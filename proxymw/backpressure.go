@@ -26,10 +26,23 @@ const (
 )
 
 var (
-	bpWatermarkGauge  = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_watermark"})
-	bpAllowanceGauge  = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_allowance"})
-	bpQueryErrCounter = promauto.NewCounter(
-		prometheus.CounterOpts{Name: "proxymw_bp_query_error_count"},
+	bpMinGauge       = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_cwdn_min"})
+	bpMaxGauge       = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_cwdn_max"})
+	bpWatermarkGauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_watermark"})
+	bpAllowanceGauge = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_bp_allowance"})
+
+	bpMetricLabels    = []string{"query_name"}
+	bpQueryErrCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{Name: "proxymw_bp_query_error_count"}, bpMetricLabels,
+	)
+	bpQueryWarnGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "proxymw_bp_query_warn"}, bpMetricLabels,
+	)
+	bpQueryEmergencyGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "proxymw_bp_query_emergency"}, bpMetricLabels,
+	)
+	bpQueryValGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{Name: "proxymw_bp_query_value"}, bpMetricLabels,
 	)
 )
 
@@ -40,6 +53,10 @@ type PrometheusResponse struct {
 }
 
 type BackpressureQuery struct {
+	// Name is an optional human readable field used to emit tagged metrics.
+	// When unset, operational metrics are omitted.
+	// When set, read warn_threshold as proxymw_bp_warn_threshold{query_name="<name>"}
+	Name string `yaml:"name,omitempty"`
 	// Query is the PromQL to monitor system load or usage
 	Query string `yaml:"query"`
 	// WarningThreshold is the load value at which throttling begins (e.g., 80% capacity)
@@ -145,17 +162,23 @@ func (c BackpressureConfig) Validate() error {
 // How does it work?
 // 1. Start a background thread to keep backpressure metrics updated
 // 2. On each request, set the "window" for how many concurrent requests are allowed
-// 3. if we are within bounds, allow the request
-// 4. if backpressure is not spiking, widen the window by one (additive)
-// 5. if backpressure signals fire, cut the window by half (multiplicative)
+// 3. If we are within bounds, allow the request
+// 4. If backpressure is not spiking, widen the window by one (additive)
+// 5. if backpressure signals fire, cut the window in proportion to signal strength (multiplicative)
 type Backpressure struct {
 	mu             sync.Mutex
 	watermark      int
 	active         int
 	min, max       int
+	minGauge       prometheus.Gauge
+	maxGauge       prometheus.Gauge
 	watermarkGauge prometheus.Gauge
 	allowanceGauge prometheus.Gauge
-	queryErrCount  prometheus.Counter
+
+	queryErrCount  *prometheus.CounterVec
+	warnGauge      *prometheus.GaugeVec
+	emergencyGauge *prometheus.GaugeVec
+	queryValGauge  *prometheus.GaugeVec
 
 	monitorClient *http.Client
 	monitorURL    string
@@ -180,9 +203,16 @@ func NewBackpressure(
 		min:            minWindow,
 		max:            maxWindow,
 		allowance:      1,
+		minGauge:       bpMinGauge,
+		maxGauge:       bpMaxGauge,
 		watermarkGauge: bpWatermarkGauge,
 		allowanceGauge: bpAllowanceGauge,
+
 		queryErrCount:  bpQueryErrCounter,
+		warnGauge:      bpQueryWarnGauge,
+		emergencyGauge: bpQueryEmergencyGauge,
+		queryValGauge:  bpQueryValGauge,
+
 		monitorClient: &http.Client{
 			Timeout:   MonitorQueryTimeout,
 			Transport: http.DefaultTransport,
@@ -194,8 +224,18 @@ func NewBackpressure(
 }
 
 func (bp *Backpressure) Init(ctx context.Context) {
+	bp.minGauge.Set(float64(bp.min))
+	bp.maxGauge.Set(float64(bp.max))
 	bp.allowanceGauge.Set(bp.allowance)
 	bp.watermarkGauge.Set(float64(bp.watermark))
+
+	for _, q := range bp.queries {
+		if q.Name != "" {
+			bp.warnGauge.WithLabelValues(q.Name).Set(q.WarningThreshold)
+			bp.emergencyGauge.WithLabelValues(q.Name).Set(q.EmergencyThreshold)
+		}
+	}
+
 	bp.metricsLoop(ctx)
 	bp.client.Init(ctx)
 }
@@ -232,11 +272,12 @@ func (bp *Backpressure) metricLoop(ctx context.Context, q BackpressureQuery) {
 		case <-ticker.C:
 			curr, err := bp.metricFired(ctx, q.Query)
 			if err != nil {
-				bp.queryErrCount.Inc()
+				bp.queryErrCount.WithLabelValues(q.Name).Inc()
 				log.Printf("querying metric '%s' returned error: %v", q.Query, err)
 				continue
 			}
 
+			bp.queryValGauge.WithLabelValues(q.Name).Set(curr)
 			bp.updateThrottle(q, curr)
 		}
 	}
@@ -247,11 +288,23 @@ func (bp *Backpressure) updateThrottle(q BackpressureQuery, curr float64) {
 
 	throttlePercent := 0.0
 	var err error
-	bp.throttleFlags.Range(func(_, value interface{}) bool {
+	bp.throttleFlags.Range(func(key, value interface{}) bool {
+		query, ok := key.(BackpressureQuery)
+		if !ok {
+			log.Printf(
+				"error updating query '%s' throttle to %f: %v, expected query got %T",
+				q.Query, curr, err, query,
+			)
+			return true
+		}
+
 		val, ok := value.(float64)
 		if !ok {
-			bp.queryErrCount.Inc()
-			log.Printf("error updating query '%s' throttle to %f: %v", q.Query, curr, err)
+			bp.queryErrCount.WithLabelValues(query.Name).Inc()
+			log.Printf(
+				"error updating query '%s' throttle to %f: %v, expected float got %T",
+				q.Query, curr, err, val,
+			)
 			return true
 		}
 

@@ -2,7 +2,7 @@ services:
   throttle-proxy:
     build:
       context: .
-      dockerfile: sandbox/Dockerfile.throttle-proxy
+      dockerfile: sandbox/Dockerfile.throttle-proxy-cf
     command: >
       -upstream=http://prom:9090
       -insecure-listen-address=0.0.0.0:7777
@@ -18,8 +18,13 @@ services:
       -bp-min-window=1
       -bp-max-window=10
       -bp-query=sum\(rate\(proxymw_request_count[1m]\)\)
+      -bp-query-name=proxy_rps
       -bp-warn=0.2
       -bp-emergency=2
+      -bp-query="up"
+      -bp-query-name=up_jobs
+      -bp-warn=100
+      -bp-emergency=200
     ports:
       - 7777:7777
       - 7776:7776

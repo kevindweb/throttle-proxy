@@ -140,6 +140,7 @@ func parseConfigs() (Config, error) {
 		enableBackpressure              bool
 		backpressureMonitoringURL       string
 		backpressureQueries             StringSlice
+		backpressureQueryNames          StringSlice
 		backpressureWarnThresholds      Float64Slice
 		backpressureEmergencyThresholds Float64Slice
 		congestionWindowMin             int
@@ -195,6 +196,12 @@ func parseConfigs() (Config, error) {
 		"PromQL that signifies an increase in downstream failure",
 	)
 	flagset.Var(
+		&backpressureQueryNames, "bp-query-name",
+		"Name is an optional human readable field used to emit tagged metrics. "+
+			"When unset, operational metrics are omitted. "+
+			`When set, read warn_threshold as proxymw_bp_warn_threshold{query_name="<name>"}`,
+	)
+	flagset.Var(
 		&backpressureWarnThresholds, "bp-warn",
 		"Threshold that defines when the system should start backing off",
 	)
@@ -224,6 +231,10 @@ func parseConfigs() (Config, error) {
 
 	n := len(backpressureQueries)
 	queries := make([]proxymw.BackpressureQuery, n)
+	if len(backpressureQueryNames) != n && len(backpressureQueryNames) != 0 {
+		return Config{}, fmt.Errorf("number of backpressure query names should be 0 or %d", n)
+	}
+
 	if len(backpressureWarnThresholds) != n {
 		return Config{}, fmt.Errorf("expected %d warn thresholds for %d backpressure queries", n, n)
 	}
@@ -235,7 +246,12 @@ func parseConfigs() (Config, error) {
 	}
 
 	for i, query := range backpressureQueries {
+		queryName := ""
+		if len(backpressureQueryNames) > 0 {
+			queryName = backpressureQueryNames[i]
+		}
 		queries[i] = proxymw.BackpressureQuery{
+			Name:               queryName,
 			Query:              query,
 			WarningThreshold:   backpressureWarnThresholds[i],
 			EmergencyThreshold: backpressureEmergencyThresholds[i],

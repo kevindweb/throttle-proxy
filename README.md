@@ -49,4 +49,36 @@ config := proxymw.BackpressureConfig{
 1. Configure backpressure queries as Prometheus metrics
 2. Define min/max request windows
 3. Choose the [server-side http proxy](main.go) or [client-side roundtripper](examples/roundtripper/main.go)
-4. Let the proxy handle the rest!
+4. Import the starter [Grafana dashboard](sandbox/grafana/provisioning/dashboards/throttle-proxy.json)
+5. Let the proxy handle the rest!
+
+## Development
+
+### Installation
+
+Build the docker-compose stack
+
+```
+make all
+docker compose down
+docker-compose up --build
+```
+
+View metrics in the [local Grafana instance]()
+
+### Lint and Test
+
+```
+make test
+make lintfix
+```
+
+### Upgrade dependencies
+
+```
+make deps
+```
+
+### Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md)
