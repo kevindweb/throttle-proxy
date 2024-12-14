@@ -1,1 +1,3 @@
 .cover/
+.ruff_cache/
+.env/

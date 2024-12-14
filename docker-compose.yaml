@@ -2,7 +2,7 @@ services:
   throttle-proxy:
     build:
       context: .
-      dockerfile: sandbox/Dockerfile.throttle-proxy-cf
+      dockerfile: sandbox/Dockerfile.throttle-proxy
     command: >
       -upstream=http://prom:9090
       -insecure-listen-address=0.0.0.0:7777
