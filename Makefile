@@ -54,6 +54,9 @@ lint: fmt
 lintfix: fmt
 	@golangci-lint run --fix
 
+ruff:
+	ruff check .
+
 TEST_FLAGS := -v -coverprofile .cover/cover.out
 TEST_PATH := ./...
 

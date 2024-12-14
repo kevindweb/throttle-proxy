@@ -64,7 +64,8 @@ docker compose down
 docker-compose up --build
 ```
 
-View metrics in the [local Grafana instance]()
+- Generate fake traffic with `./sandbox/traffic.py`
+- View metrics in the [local Grafana instance](http://localhost:3000/d/be68n82lvzg8wa/throttle-proxy-metrics)
 
 ### Lint and Test
 
