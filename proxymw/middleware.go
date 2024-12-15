@@ -184,7 +184,7 @@ func (se *ServeExit) Init(_ context.Context) {}
 func (se *ServeExit) Next(rr Request) error {
 	rrw, ok := rr.(ResponseWriter)
 	if !ok {
-		return fmt.Errorf("request is of type %T not RequestResponseWriter", rr)
+		return fmt.Errorf("request is of type %T not ResponseWriter", rr)
 	}
 
 	w := rrw.ResponseWriter()
@@ -270,7 +270,7 @@ func writeAPIError(w http.ResponseWriter, errorMessage string, code int) {
 
 	response := APIErrorResponse{
 		Status:    "error",
-		ErrorType: "query-proxy",
+		ErrorType: "throttle-proxy",
 		Error:     errorMessage,
 	}
 
