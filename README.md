@@ -6,6 +6,8 @@
 
 🛡️ Dynamically shield your services from traffic overload using smart, metrics-driven congestion control.
 
+See [Netflix concurrency-limits](https://github.com/Netflix/concurrency-limits) for the inspiration.
+
 ## Key Features
 
 - 📊 **Adaptive Traffic Management**: Automatically adjusts request concurrency based on real-time Prometheus metrics
