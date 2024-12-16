@@ -1,3 +1,4 @@
 .cover/
 .ruff_cache/
 .env/
+throttle-proxy
