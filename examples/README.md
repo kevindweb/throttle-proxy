@@ -4,9 +4,11 @@
 
 `go install github.com/kevindweb/throttle-proxy@latest`
 
-## Run
+### Locally
 
 `make build`
+
+## Usage
 
 ### Config File
 
@@ -20,7 +22,8 @@ throttle-proxy -config-file examples/config.yaml
 throttle-proxy -upstream=http://localhost:9095 \
     -insecure-listen-address=0.0.0.0:7777 \
     -internal-listen-address=0.0.0.0:7776 \
-    -unsafe-passthrough-paths=/api/v2 \
+    -proxy-paths=/api/v2/endpoint-to-proxy \
+    -passthrough-paths=/api/v2/endpoint-to-passthrough \
     -proxy-read-timeout=30s \
     -proxy-write-timeout=30s \
     -enable-jitter=true \
