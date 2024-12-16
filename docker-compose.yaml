@@ -9,7 +9,8 @@ services:
       -internal-listen-address=0.0.0.0:7776
       -proxy-write-timeout=1m
       -proxy-read-timeout=1m
-      -unsafe-passthrough-paths=/graph,/static,/manifest.json,/api/v1
+      -proxy-paths=/api/v1/query
+      -passthrough-paths=/graph,/static,/manifest.json
       -enable-jitter=true
       -jitter-delay=1s
       -enable-observer=true

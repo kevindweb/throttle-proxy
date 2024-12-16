@@ -6,7 +6,6 @@ on:
       - "go.sum"
       - "go.mod"
       - "**.go"
-      - "scripts/errcheck_excludes.txt"
       - ".github/workflows/golangci-lint.yml"
       - ".golangci.yml"
   pull_request:

@@ -99,7 +99,7 @@ type ServeEntry struct {
 
 // NewServeFromConfig constructs a middleware chain based on configuration.
 // The middleware chain is constructed in the following order:
-// 1. HTTP Request wrapping (Entry)
+// 1. Request wrapping (Entry)
 // 2. Metrics collection (Observer)
 // 3. Request spreading (Jitter)
 // 4. Adaptive rate limiting (Backpressure)
