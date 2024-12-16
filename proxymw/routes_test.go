@@ -98,3 +98,74 @@ func TestNewRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestNewDefaultPassthroughRoutes(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("upstream response"))
+	}))
+	defer upstream.Close()
+
+	upstreamURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatalf("Failed to parse upstream URL: %v", err)
+	}
+
+	cfg := proxymw.Config{
+		EnableJitter:  false,
+		ClientTimeout: time.Second,
+	}
+
+	ctx := context.Background()
+	proxies := []string{"/test-proxy"}
+	passthroughs := []string{}
+	routes, err := proxymw.NewRoutes(ctx, cfg, proxies, passthroughs, upstreamURL)
+	if err != nil {
+		t.Fatalf("Failed to create routes: %v", err)
+	}
+
+	testServer := httptest.NewServer(routes)
+	defer testServer.Close()
+
+	testCases := []struct {
+		name           string
+		path           string
+		expectedStatus int
+	}{
+		{
+			name:           "Health Check",
+			path:           "/healthz",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "Passthrough Path",
+			path:           "/test-proxy",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "Passthrough Path",
+			path:           "/test-passthrough",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "Not a passthrough",
+			path:           "/non-passthrough",
+			expectedStatus: http.StatusOK,
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			u := testServer.URL + tt.path
+			ctx := context.Background()
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
+			require.NoError(t, err)
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+
+			defer resp.Body.Close()
+			if resp.StatusCode != tt.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tt.expectedStatus, resp.StatusCode)
+			}
+		})
+	}
+}

@@ -46,8 +46,12 @@ func NewRoutes(
 		mux.Handle(path, mw.Proxy())
 	}
 
-	for _, path := range passthroughPaths {
-		mux.Handle(path, http.HandlerFunc(r.passthrough))
+	if len(passthroughPaths) == 0 {
+		mux.Handle("/", http.HandlerFunc(r.passthrough))
+	} else {
+		for _, path := range passthroughPaths {
+			mux.Handle(path, http.HandlerFunc(r.passthrough))
+		}
 	}
 
 	r.mux = mux

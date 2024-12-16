@@ -10,7 +10,6 @@ services:
       -proxy-write-timeout=1m
       -proxy-read-timeout=1m
       -proxy-paths=/api/v1/query
-      -passthrough-paths=/graph,/static,/manifest.json
       -enable-jitter=true
       -jitter-delay=1s
       -enable-observer=true
