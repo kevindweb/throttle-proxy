@@ -18,8 +18,13 @@ type routes struct {
 }
 
 func NewRoutes(
-	ctx context.Context, cfg Config, proxyPaths, passthroughPaths []string, upstream *url.URL,
+	ctx context.Context, cfg Config, proxyPaths, passthroughPaths []string, upstreamURL string,
 ) (http.Handler, error) {
+	upstream, err := parseUpstream(upstreamURL)
+	if err != nil {
+		return nil, err
+	}
+
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
 	proxy.ErrorLog = log.Default()
 
@@ -56,6 +61,22 @@ func NewRoutes(
 
 	r.mux = mux
 	return r, nil
+}
+
+func parseUpstream(upstream string) (*url.URL, error) {
+	upstreamURL, err := url.Parse(upstream)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse upstream URL: %v", err)
+	}
+
+	if upstreamURL.Scheme != "http" && upstreamURL.Scheme != "https" {
+		return nil, fmt.Errorf(
+			"invalid scheme for upstream URL %q, only 'http' and 'https' are supported",
+			upstream,
+		)
+	}
+
+	return upstreamURL, nil
 }
 
 func (r *routes) ServeHTTP(w http.ResponseWriter, req *http.Request) {

@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -66,11 +65,6 @@ func main() {
 }
 
 func setupInsecureServer(ctx context.Context, cfg proxyutil.Config) (*http.Server, error) {
-	upstreamURL, err := parseUpstream(cfg.Upstream)
-	if err != nil {
-		return nil, err
-	}
-
 	readTimeout, err := time.ParseDuration(cfg.ReadTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing read timeout: %v", err)
@@ -86,7 +80,7 @@ func setupInsecureServer(ctx context.Context, cfg proxyutil.Config) (*http.Serve
 	}
 
 	routes, err := proxymw.NewRoutes(
-		ctx, cfg.ProxyConfig, cfg.ProxyPaths, cfg.PassthroughPaths, upstreamURL,
+		ctx, cfg.ProxyConfig, cfg.ProxyPaths, cfg.PassthroughPaths, cfg.Upstream,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create proxymw Routes: %v", err)
@@ -114,22 +108,6 @@ func setupInsecureServer(ctx context.Context, cfg proxyutil.Config) (*http.Serve
 	}()
 
 	return srv, nil
-}
-
-func parseUpstream(upstream string) (*url.URL, error) {
-	upstreamURL, err := url.Parse(upstream)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse upstream URL: %v", err)
-	}
-
-	if upstreamURL.Scheme != "http" && upstreamURL.Scheme != "https" {
-		return nil, fmt.Errorf(
-			"invalid scheme for upstream URL %q, only 'http' and 'https' are supported",
-			upstream,
-		)
-	}
-
-	return upstreamURL, nil
 }
 
 func setupInternalServer(cfg proxyutil.Config) (*http.Server, error) {
