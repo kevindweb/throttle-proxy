@@ -61,7 +61,7 @@ func (f *Float64Slice) Set(value string) error {
 	return nil
 }
 
-func ParseConfigs() (Config, error) {
+func ParseConfigFlags() (Config, error) {
 	var (
 		insecureListenAddress     string
 		internalListenAddress     string
@@ -164,7 +164,7 @@ func ParseConfigs() (Config, error) {
 	}
 
 	if configFile != "" {
-		return parseConfigFile(configFile)
+		return ParseConfigFile(configFile)
 	}
 
 	proxyPathsList, err := parsePaths(proxyPaths)
@@ -198,6 +198,58 @@ func ParseConfigs() (Config, error) {
 			},
 		},
 	}, nil
+}
+
+func ParseConfigEnvironment() (Config, error) {
+	u := os.Getenv("UPSTREAM")
+	proxyPaths := os.Getenv("PROXY_PATHS")
+	passthroughPaths := os.Getenv("PASSTHROUGH_PATHS")
+
+	proxyPathsList, err := parsePaths(proxyPaths)
+	if err != nil {
+		return Config{}, err
+	}
+
+	passthroughPathsList, err := parsePaths(passthroughPaths)
+	if err != nil {
+		return Config{}, err
+	}
+
+	enableJitter, err := getBoolEnv("PROXYMW_ENABLE_JITTER")
+	if err != nil {
+		return Config{}, err
+	}
+
+	jitterDelay, err := getDurationEnv("PROXYMW_JITTER_DELAY")
+	if err != nil {
+		return Config{}, err
+	}
+
+	return Config{
+		Upstream:         u,
+		ProxyPaths:       proxyPathsList,
+		PassthroughPaths: passthroughPathsList,
+		ProxyConfig: proxymw.Config{
+			EnableJitter: enableJitter,
+			JitterDelay:  jitterDelay,
+		},
+	}, nil
+}
+
+func getBoolEnv(key string) (bool, error) {
+	b := os.Getenv(key)
+	if b == "" {
+		return false, nil
+	}
+	return strconv.ParseBool(b)
+}
+
+func getDurationEnv(key string) (time.Duration, error) {
+	d := os.Getenv(key)
+	if d == "" {
+		return 0, nil
+	}
+	return time.ParseDuration(d)
 }
 
 func parsePaths(paths string) ([]string, error) {
@@ -261,18 +313,24 @@ func parseBackpressureQueries(
 	return queries, nil
 }
 
-func parseConfigFile(configFile string) (Config, error) {
+func ParseConfigFile(configFile string) (Config, error) {
+	return ParseFile[Config](configFile)
+}
+
+func ParseProxyConfigFile(configFile string) (proxymw.Config, error) {
+	return ParseFile[proxymw.Config](configFile)
+}
+
+func ParseFile[T any](configFile string) (cfg T, err error) {
 	// nolint:gosec // accept configuration file as input
 	file, err := os.Open(configFile)
 	if err != nil {
-		return Config{}, fmt.Errorf("error opening config file: %v", err)
+		return cfg, fmt.Errorf("error opening config file: %v", err)
 	}
 	defer file.Close()
 
-	var cfg Config
-	decoder := yaml.NewDecoder(file)
-	if err := decoder.Decode(&cfg); err != nil {
-		return Config{}, fmt.Errorf("error decoding YAML: %v", err)
+	if err := yaml.NewDecoder(file).Decode(&cfg); err != nil {
+		return cfg, fmt.Errorf("error decoding YAML: %v", err)
 	}
 
 	return cfg, nil

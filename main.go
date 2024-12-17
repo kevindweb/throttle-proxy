@@ -17,12 +17,12 @@ import (
 
 	_ "go.uber.org/automaxprocs"
 
-	"github.com/kevindweb/throttle-proxy/proxymw"
 	"github.com/kevindweb/throttle-proxy/proxyutil"
+	"github.com/kevindweb/throttle-proxy/proxyutil/proxyhttp"
 )
 
 func main() {
-	cfg, err := proxyutil.ParseConfigs()
+	cfg, err := proxyutil.ParseConfigFlags()
 	if err != nil {
 		log.Fatalf("Failed to parse flags: %v", err)
 	}
@@ -79,9 +79,7 @@ func setupInsecureServer(ctx context.Context, cfg proxyutil.Config) (*http.Serve
 		cfg.ProxyConfig.ClientTimeout = 2 * readTimeout
 	}
 
-	routes, err := proxymw.NewRoutes(
-		ctx, cfg.ProxyConfig, cfg.ProxyPaths, cfg.PassthroughPaths, cfg.Upstream,
-	)
+	routes, err := proxyhttp.NewRoutes(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create proxymw Routes: %v", err)
 	}

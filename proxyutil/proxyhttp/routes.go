@@ -1,4 +1,5 @@
-package proxymw
+// Package proxyhttp generates an http mux handler to servce requests using *httputil.ReverseProxy
+package proxyhttp
 
 import (
 	"context"
@@ -8,6 +9,9 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+
+	"github.com/kevindweb/throttle-proxy/proxymw"
+	"github.com/kevindweb/throttle-proxy/proxyutil"
 )
 
 type routes struct {
@@ -17,10 +21,8 @@ type routes struct {
 	mux http.Handler
 }
 
-func NewRoutes(
-	ctx context.Context, cfg Config, proxyPaths, passthroughPaths []string, upstreamURL string,
-) (http.Handler, error) {
-	upstream, err := parseUpstream(upstreamURL)
+func NewRoutes(ctx context.Context, cfg proxyutil.Config) (http.Handler, error) {
+	upstream, err := parseUpstream(cfg.Upstream)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +35,7 @@ func NewRoutes(
 		handler:  proxy,
 	}
 
-	mw, err := NewServeFromConfig(cfg, r.passthrough)
+	mw, err := proxymw.NewServeFromConfig(cfg.ProxyConfig, r.passthrough)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create middleware from config: %v", err)
 	}
@@ -47,14 +49,14 @@ func NewRoutes(
 		}
 	}))
 
-	for _, path := range proxyPaths {
+	for _, path := range cfg.ProxyPaths {
 		mux.Handle(path, mw.Proxy())
 	}
 
-	if len(passthroughPaths) == 0 {
+	if len(cfg.PassthroughPaths) == 0 {
 		mux.Handle("/", http.HandlerFunc(r.passthrough))
 	} else {
-		for _, path := range passthroughPaths {
+		for _, path := range cfg.PassthroughPaths {
 			mux.Handle(path, http.HandlerFunc(r.passthrough))
 		}
 	}

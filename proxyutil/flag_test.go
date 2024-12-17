@@ -221,7 +221,7 @@ func TestParseConfig(t *testing.T) {
 			oldArgs := os.Args
 			defer func() { os.Args = oldArgs }()
 			os.Args = tt.args
-			cfg, err := proxyutil.ParseConfigs()
+			cfg, err := proxyutil.ParseConfigFlags()
 			require.Equal(t, err != nil, tt.wantErr)
 			require.Equal(t, cfg, tt.cfg)
 		})

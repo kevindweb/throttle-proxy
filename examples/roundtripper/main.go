@@ -8,13 +8,12 @@ import (
 	"os"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/kevindweb/throttle-proxy/proxymw"
+	"github.com/kevindweb/throttle-proxy/proxyutil"
 )
 
 func fullConfigRoundTripper(ctx context.Context) (*proxymw.RoundTripperEntry, error) {
-	cfg, err := parseConfigFile(os.Getenv("CONFIG_FILE"))
+	cfg, err := proxyutil.ParseProxyConfigFile(os.Getenv("CONFIG_FILE"))
 	if err != nil {
 		return nil, err
 	}
@@ -26,23 +25,6 @@ func fullConfigRoundTripper(ctx context.Context) (*proxymw.RoundTripperEntry, er
 
 	mw.Init(ctx)
 	return mw, err
-}
-
-func parseConfigFile(configFile string) (proxymw.Config, error) {
-	// nolint:gosec // accept configuration file as input
-	file, err := os.Open(configFile)
-	if err != nil {
-		return proxymw.Config{}, fmt.Errorf("error opening config file: %v", err)
-	}
-	defer file.Close()
-
-	var cfg proxymw.Config
-	decoder := yaml.NewDecoder(file)
-	if err := decoder.Decode(&cfg); err != nil {
-		return proxymw.Config{}, fmt.Errorf("error decoding YAML: %v", err)
-	}
-
-	return cfg, nil
 }
 
 func main() {
