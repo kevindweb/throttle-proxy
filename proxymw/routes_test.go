@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 	"time"
 
@@ -14,16 +13,13 @@ import (
 )
 
 func TestInvalidJitterConfig(t *testing.T) {
-	upstream, err := url.Parse("http://google.com")
-	require.NoError(t, err)
-
 	ctx := context.Background()
 	cfg := proxymw.Config{
 		EnableJitter: true,
 		JitterDelay:  0,
 	}
 
-	routes, err := proxymw.NewRoutes(ctx, cfg, []string{}, []string{}, upstream)
+	routes, err := proxymw.NewRoutes(ctx, cfg, []string{}, []string{}, "http://google.com")
 	require.ErrorAs(t, err, &proxymw.ErrJitterDelayRequired)
 	require.Nil(t, routes)
 }
@@ -35,11 +31,6 @@ func TestNewRoutes(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	upstreamURL, err := url.Parse(upstream.URL)
-	if err != nil {
-		t.Fatalf("Failed to parse upstream URL: %v", err)
-	}
-
 	cfg := proxymw.Config{
 		EnableJitter:  false,
 		ClientTimeout: time.Second,
@@ -48,7 +39,7 @@ func TestNewRoutes(t *testing.T) {
 	ctx := context.Background()
 	proxies := []string{"/test-proxy"}
 	passthroughs := []string{"/test-passthrough"}
-	routes, err := proxymw.NewRoutes(ctx, cfg, proxies, passthroughs, upstreamURL)
+	routes, err := proxymw.NewRoutes(ctx, cfg, proxies, passthroughs, upstream.URL)
 	if err != nil {
 		t.Fatalf("Failed to create routes: %v", err)
 	}
@@ -106,11 +97,6 @@ func TestNewDefaultPassthroughRoutes(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	upstreamURL, err := url.Parse(upstream.URL)
-	if err != nil {
-		t.Fatalf("Failed to parse upstream URL: %v", err)
-	}
-
 	cfg := proxymw.Config{
 		EnableJitter:  false,
 		ClientTimeout: time.Second,
@@ -119,7 +105,7 @@ func TestNewDefaultPassthroughRoutes(t *testing.T) {
 	ctx := context.Background()
 	proxies := []string{"/test-proxy"}
 	passthroughs := []string{}
-	routes, err := proxymw.NewRoutes(ctx, cfg, proxies, passthroughs, upstreamURL)
+	routes, err := proxymw.NewRoutes(ctx, cfg, proxies, passthroughs, upstream.URL)
 	if err != nil {
 		t.Fatalf("Failed to create routes: %v", err)
 	}
