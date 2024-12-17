@@ -78,6 +78,7 @@ func ParseConfigFlags() (Config, error) {
 		bpEmergencyThresholds     Float64Slice
 		congestionWindowMin       int
 		congestionWindowMax       int
+		enableCriticality         bool
 		enableJitter              bool
 		jitterDelay               time.Duration
 		enableObserver            bool
@@ -103,6 +104,7 @@ func ParseConfigFlags() (Config, error) {
 		"HTTP write timeout duration",
 	)
 	flagset.StringVar(&upstream, "upstream", "", "The upstream URL to proxy to.")
+	flagset.BoolVar(&enableCriticality, "enable-criticality", false, "Read criticality headers")
 	flagset.BoolVar(&enableJitter, "enable-jitter", false, "Use the jitter middleware")
 	flagset.DurationVar(
 		&jitterDelay, "jitter-delay", 0,
@@ -186,9 +188,10 @@ func ParseConfigFlags() (Config, error) {
 		ProxyPaths:            proxyPathsList,
 		PassthroughPaths:      passthroughPathsList,
 		ProxyConfig: proxymw.Config{
-			EnableJitter:   enableJitter,
-			JitterDelay:    jitterDelay,
-			EnableObserver: enableObserver,
+			EnableCriticality: enableCriticality,
+			EnableJitter:      enableJitter,
+			JitterDelay:       jitterDelay,
+			EnableObserver:    enableObserver,
 			BackpressureConfig: proxymw.BackpressureConfig{
 				EnableBackpressure:        enableBackpressure,
 				BackpressureMonitoringURL: backpressureMonitoringURL,
