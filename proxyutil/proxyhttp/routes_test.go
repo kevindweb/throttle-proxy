@@ -1,4 +1,4 @@
-package proxymw_test
+package proxyhttp_test
 
 import (
 	"context"
@@ -10,16 +10,23 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kevindweb/throttle-proxy/proxymw"
+	"github.com/kevindweb/throttle-proxy/proxyutil"
+	"github.com/kevindweb/throttle-proxy/proxyutil/proxyhttp"
 )
 
 func TestInvalidJitterConfig(t *testing.T) {
 	ctx := context.Background()
-	cfg := proxymw.Config{
-		EnableJitter: true,
-		JitterDelay:  0,
+	cfg := proxyutil.Config{
+		Upstream:         "http://google.com",
+		ProxyPaths:       []string{},
+		PassthroughPaths: []string{},
+		ProxyConfig: proxymw.Config{
+			EnableJitter: true,
+			JitterDelay:  0,
+		},
 	}
 
-	routes, err := proxymw.NewRoutes(ctx, cfg, []string{}, []string{}, "http://google.com")
+	routes, err := proxyhttp.NewRoutes(ctx, cfg)
 	require.ErrorAs(t, err, &proxymw.ErrJitterDelayRequired)
 	require.Nil(t, routes)
 }
@@ -31,15 +38,18 @@ func TestNewRoutes(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := proxymw.Config{
-		EnableJitter:  false,
-		ClientTimeout: time.Second,
+	cfg := proxyutil.Config{
+		Upstream:         upstream.URL,
+		ProxyPaths:       []string{"/test-proxy"},
+		PassthroughPaths: []string{"/test-passthrough"},
+		ProxyConfig: proxymw.Config{
+			EnableJitter:  false,
+			ClientTimeout: time.Second,
+		},
 	}
 
 	ctx := context.Background()
-	proxies := []string{"/test-proxy"}
-	passthroughs := []string{"/test-passthrough"}
-	routes, err := proxymw.NewRoutes(ctx, cfg, proxies, passthroughs, upstream.URL)
+	routes, err := proxyhttp.NewRoutes(ctx, cfg)
 	if err != nil {
 		t.Fatalf("Failed to create routes: %v", err)
 	}
@@ -97,15 +107,18 @@ func TestNewDefaultPassthroughRoutes(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	cfg := proxymw.Config{
-		EnableJitter:  false,
-		ClientTimeout: time.Second,
+	cfg := proxyutil.Config{
+		Upstream:         upstream.URL,
+		ProxyPaths:       []string{"/test-proxy"},
+		PassthroughPaths: []string{},
+		ProxyConfig: proxymw.Config{
+			EnableJitter:  false,
+			ClientTimeout: time.Second,
+		},
 	}
 
 	ctx := context.Background()
-	proxies := []string{"/test-proxy"}
-	passthroughs := []string{}
-	routes, err := proxymw.NewRoutes(ctx, cfg, proxies, passthroughs, upstream.URL)
+	routes, err := proxyhttp.NewRoutes(ctx, cfg)
 	if err != nil {
 		t.Fatalf("Failed to create routes: %v", err)
 	}
