@@ -55,6 +55,7 @@ func TestParseConfig(t *testing.T) {
 				"--proxy-read-timeout", "2m",
 				"--proxy-write-timeout", "3m",
 				"--enable-observer=true",
+				"--enable-criticality=true",
 				"--enable-jitter",
 				"--jitter-delay", "100ms",
 				"--enable-bp",
@@ -81,9 +82,10 @@ func TestParseConfig(t *testing.T) {
 				ReadTimeout:           "2m",
 				WriteTimeout:          "3m",
 				ProxyConfig: proxymw.Config{
-					EnableJitter:   true,
-					JitterDelay:    time.Millisecond * 100,
-					EnableObserver: true,
+					EnableCriticality: true,
+					EnableJitter:      true,
+					JitterDelay:       time.Millisecond * 100,
+					EnableObserver:    true,
 					BackpressureConfig: proxymw.BackpressureConfig{
 						EnableBackpressure:        true,
 						BackpressureMonitoringURL: "http://metrics.example.com",
