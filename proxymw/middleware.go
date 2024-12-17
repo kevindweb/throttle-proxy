@@ -65,6 +65,7 @@ type Config struct {
 	JitterDelay        time.Duration `yaml:"jitter_delay"`
 	EnableObserver     bool          `yaml:"enable_observer"`
 	ClientTimeout      time.Duration `yaml:"client_timeout"`
+	EnableCriticality  bool          `yaml:"enable_criticality"`
 }
 
 // APIErrorResponse represents the standard error response format
@@ -135,7 +136,7 @@ func NewFromConfig(cfg Config, client ProxyClient) (ProxyClient, error) {
 	}
 
 	if cfg.EnableJitter {
-		client = NewJitterer(client, cfg.JitterDelay)
+		client = NewJitterer(client, cfg.JitterDelay, cfg.EnableCriticality)
 	}
 
 	if cfg.EnableObserver {
