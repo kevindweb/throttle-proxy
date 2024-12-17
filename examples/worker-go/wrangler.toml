@@ -1,0 +1,19 @@
+name = "throttle-proxy"
+main = "./build/worker.mjs"
+compatibility_date = "2024-04-15"
+
+[build]
+command = "make build"
+
+[[vars]]
+CONFIG_JSON = """
+{
+  "upstream": "http://localhost:9095",
+  "proxy_paths": ["/api/v1/query"],
+  "passthrough_paths": ["/favicon.ico"],
+  "proxymw_config": {
+    "enable_jitter": true,
+    "jitter_delay": "5s"
+  }
+}
+"""
