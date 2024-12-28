@@ -53,9 +53,7 @@ func TestMiddlewareOrder(t *testing.T) {
 		},
 	}
 
-	serve, err := NewServeFromConfig(config, mock.ServeHTTP)
-	require.NoError(t, err)
-
+	serve := NewServeFromConfig(config, mock.ServeHTTP)
 	serve.Init(ctx)
 
 	c := serve.client
@@ -79,9 +77,7 @@ func TestMiddlewareOrder(t *testing.T) {
 	require.Equal(t, 1, serveCalls)
 	require.Equal(t, *r.Clone(ctx), *r)
 
-	rt, err := NewRoundTripperFromConfig(config, mock)
-	require.NoError(t, err)
-
+	rt := NewRoundTripperFromConfig(config, mock)
 	rt.Init(ctx)
 
 	rtc := rt.client
@@ -133,8 +129,7 @@ func TestHangingClient(t *testing.T) {
 		},
 	}
 
-	serve, err := NewServeFromConfig(config, mock.ServeHTTP)
-	require.NoError(t, err)
+	serve := NewServeFromConfig(config, mock.ServeHTTP)
 
 	c := serve.client
 	observer := c.(*Observer)
@@ -226,8 +221,7 @@ func TestConfig(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewServeFromConfig(tt.cfg, nil)
-			require.ErrorIs(t, err, tt.err)
+			require.ErrorIs(t, tt.cfg.Validate(), tt.err)
 		})
 	}
 }

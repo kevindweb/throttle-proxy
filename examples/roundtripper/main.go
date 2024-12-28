@@ -18,11 +18,11 @@ func fullConfigRoundTripper(ctx context.Context) (*proxymw.RoundTripperEntry, er
 		return nil, err
 	}
 
-	mw, err := proxymw.NewRoundTripperFromConfig(cfg, http.DefaultTransport)
-	if err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
+	mw := proxymw.NewRoundTripperFromConfig(cfg, http.DefaultTransport)
 	mw.Init(ctx)
 	return mw, err
 }
