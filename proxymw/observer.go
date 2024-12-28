@@ -11,20 +11,30 @@ import (
 )
 
 var (
-	errCounter   = promauto.NewCounter(prometheus.CounterOpts{Name: "proxymw_error_count"})
+	errCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "proxymw_error_count",
+	})
 	blockCounter = promauto.NewCounterVec(
-		prometheus.CounterOpts{Name: "proxymw_block_count"}, []string{"mw_type"},
+		prometheus.CounterOpts{
+			Name: "proxymw_block_count",
+		},
+		[]string{"mw_type"},
 	)
-	reqCounter     = promauto.NewCounter(prometheus.CounterOpts{Name: "proxymw_request_count"})
-	latencyCounter = promauto.NewCounter(prometheus.CounterOpts{Name: "proxymw_request_latency_ms"})
-	activeGauge    = promauto.NewGauge(prometheus.GaugeOpts{Name: "proxymw_active_requests"})
+	reqCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "proxymw_request_count",
+	})
+	latencyCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "proxymw_request_latency_ms",
+	})
+	activeGauge = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "proxymw_active_requests",
+	})
 )
 
-// Observer emits metrics such as error rate and how often proxies are blocking requests.
+// Observer wraps a ProxyClient to emit metrics such as error rate and blocked requests.
 // Each client that blocks requests should tag their errors with a client type to filter metrics.
 type Observer struct {
-	client ProxyClient
-
+	client         ProxyClient
 	errCounter     prometheus.Counter
 	blockCounter   *prometheus.CounterVec
 	reqCounter     prometheus.Counter
@@ -34,10 +44,10 @@ type Observer struct {
 
 var _ ProxyClient = &Observer{}
 
+// NewObserver creates a new Observer wrapping the provided ProxyClient.
 func NewObserver(client ProxyClient) *Observer {
 	return &Observer{
-		client: client,
-
+		client:         client,
 		errCounter:     errCounter,
 		blockCounter:   blockCounter,
 		reqCounter:     reqCounter,
@@ -46,14 +56,22 @@ func NewObserver(client ProxyClient) *Observer {
 	}
 }
 
+// Init initializes the underlying ProxyClient.
 func (o *Observer) Init(ctx context.Context) {
 	o.client.Init(ctx)
 }
 
+// Next processes the request and records relevant metrics.
 func (o *Observer) Next(rr Request) error {
 	o.activeGauge.Inc()
+	defer o.activeGauge.Dec()
+
 	start := time.Now()
 	err := o.executeNext(rr)
+
+	o.reqCounter.Inc()
+	o.latencyCounter.Add(float64(time.Since(start).Milliseconds()))
+
 	if err != nil {
 		var blocked *RequestBlockedError
 		if errors.As(err, &blocked) {
@@ -63,15 +81,13 @@ func (o *Observer) Next(rr Request) error {
 		}
 	}
 
-	o.reqCounter.Inc()
-	o.latencyCounter.Add(float64(time.Since(start).Milliseconds()))
-	o.activeGauge.Dec()
 	return err
 }
 
-// executeNext runs next in a goroutine on the off chance Next hangs so we can still run cleanup
+// executeNext runs the underlying client's Next method in a goroutine to handle potential hangs.
 func (o *Observer) executeNext(rr Request) error {
 	errc := make(chan error, 1)
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

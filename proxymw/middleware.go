@@ -11,21 +11,33 @@ import (
 	"time"
 )
 
-// ProxyClient defines the interface for middleware components
+// ProxyClient defines the interface for middleware components in the chain.
+// Each middleware component must implement Init for setup and Next for request processing.
 type ProxyClient interface {
+	// Init initializes the middleware component with a context.
+	// It should be called before the middleware starts processing requests.
 	Init(context.Context)
+
+	// Next processes the incoming request through the middleware chain.
+	// It returns an error if the request cannot be processed.
 	Next(Request) error
 }
 
+// Request represents an HTTP request in the middleware chain.
+// It provides access to the underlying http.Request.
 type Request interface {
 	Request() *http.Request
 }
 
+// Response represents an HTTP response in the middleware chain.
+// It provides access to and modification of the underlying http.Response.
 type Response interface {
 	Response() *http.Response
 	SetResponse(*http.Response)
 }
 
+// ResponseWriter represents the HTTP response writer in the middleware chain.
+// It provides access to the underlying http.ResponseWriter.
 type ResponseWriter interface {
 	ResponseWriter() http.ResponseWriter
 }
@@ -34,8 +46,12 @@ var (
 	_ Request        = &RequestResponseWrapper{}
 	_ Response       = &RequestResponseWrapper{}
 	_ ResponseWriter = &RequestResponseWrapper{}
+	_ ProxyClient    = &ServeExit{}
+	_ ProxyClient    = &RoundTripperExit{}
 )
 
+// RequestResponseWrapper implements Request, Response, and ResponseWriter interfaces
+// to wrap HTTP request/response pairs as they flow through the middleware chain.
 type RequestResponseWrapper struct {
 	req *http.Request
 	res *http.Response
@@ -105,26 +121,14 @@ type ServeEntry struct {
 // 3. Request spreading (Jitter)
 // 4. Adaptive rate limiting (Backpressure)
 // 6. Final handler (Exit)
-func NewServeFromConfig(cfg Config, next http.HandlerFunc) (*ServeEntry, error) {
-	var client ProxyClient = &ServeExit{next: next}
-
-	var err error
-	client, err = NewFromConfig(cfg, client)
-	if err != nil {
-		return nil, err
-	}
-
+func NewServeFromConfig(cfg Config, next http.HandlerFunc) *ServeEntry {
 	return &ServeEntry{
-		client:  client,
+		client:  NewFromConfig(cfg, &ServeExit{next}),
 		timeout: cfg.ClientTimeout,
-	}, nil
+	}
 }
 
-func NewFromConfig(cfg Config, client ProxyClient) (ProxyClient, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid configuration: %w", err)
-	}
-
+func NewFromConfig(cfg Config, client ProxyClient) ProxyClient {
 	if cfg.EnableBackpressure {
 		client = NewBackpressure(
 			client,
@@ -143,19 +147,19 @@ func NewFromConfig(cfg Config, client ProxyClient) (ProxyClient, error) {
 		client = NewObserver(client)
 	}
 
-	return client, nil
+	return client
 }
 
 // Proxy returns an http.Handler that processes requests through the middleware chain
-func (se *ServeEntry) Proxy() http.Handler {
+func (se *ServeEntry) Proxy() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), se.timeout)
 		defer cancel()
+
 		rr := &RequestResponseWrapper{
 			w:   w,
 			req: r.WithContext(ctx),
 		}
-
 		err := se.client.Next(rr)
 		if err == nil {
 			return
@@ -206,16 +210,9 @@ type RoundTripperEntry struct {
 	client ProxyClient
 }
 
-func NewRoundTripperFromConfig(cfg Config, rt http.RoundTripper) (*RoundTripperEntry, error) {
-	var client ProxyClient = &RoundTripperExit{transport: rt}
-
-	var err error
-	client, err = NewFromConfig(cfg, client)
-	if err != nil {
-		return nil, err
-	}
-
-	return &RoundTripperEntry{client: client}, nil
+func NewRoundTripperFromConfig(cfg Config, rt http.RoundTripper) *RoundTripperEntry {
+	client := NewFromConfig(cfg, &RoundTripperExit{rt})
+	return &RoundTripperEntry{client}
 }
 
 func (rte *RoundTripperEntry) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -223,8 +220,7 @@ func (rte *RoundTripperEntry) RoundTrip(req *http.Request) (*http.Response, erro
 		req: req,
 	}
 
-	err := rte.client.Next(rr)
-	if err != nil {
+	if err := rte.client.Next(rr); err != nil {
 		return nil, err
 	}
 
