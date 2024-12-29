@@ -44,11 +44,10 @@ func NewRoutes(ctx context.Context, cfg proxyutil.Config) (http.Handler, error) 
 	mw.Init(ctx)
 
 	mux := http.NewServeMux()
-
 	mux.Handle("/healthz", http.HandlerFunc(handleHealthCheck))
 
 	for _, path := range cfg.ProxyPaths {
-		mux.Handle(path, mw.Proxy())
+		mux.Handle(path, mw)
 	}
 
 	registerPassthroughPaths(mux, cfg.PassthroughPaths, r.passthrough)

@@ -43,11 +43,13 @@ type ResponseWriter interface {
 }
 
 var (
-	_ Request        = &RequestResponseWrapper{}
-	_ Response       = &RequestResponseWrapper{}
-	_ ResponseWriter = &RequestResponseWrapper{}
-	_ ProxyClient    = &ServeExit{}
-	_ ProxyClient    = &RoundTripperExit{}
+	_ Request           = &RequestResponseWrapper{}
+	_ Response          = &RequestResponseWrapper{}
+	_ ResponseWriter    = &RequestResponseWrapper{}
+	_ ProxyClient       = &ServeExit{}
+	_ ProxyClient       = &RoundTripperExit{}
+	_ http.Handler      = &ServeEntry{}
+	_ http.RoundTripper = &RoundTripperEntry{}
 )
 
 // RequestResponseWrapper implements Request, Response, and ResponseWriter interfaces
@@ -128,6 +130,10 @@ func NewServeFromConfig(cfg Config, next http.HandlerFunc) *ServeEntry {
 	}
 }
 
+func NewServeFuncFromConfig(cfg Config, next http.HandlerFunc) http.HandlerFunc {
+	return NewServeFromConfig(cfg, next).ServeHTTP
+}
+
 func NewFromConfig(cfg Config, client ProxyClient) ProxyClient {
 	if cfg.EnableBackpressure {
 		client = NewBackpressure(
@@ -150,28 +156,26 @@ func NewFromConfig(cfg Config, client ProxyClient) ProxyClient {
 	return client
 }
 
-// Proxy returns an http.Handler that processes requests through the middleware chain
-func (se *ServeEntry) Proxy() http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), se.timeout)
-		defer cancel()
+// ServeHTTP processes requests through the middleware chain
+func (se *ServeEntry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), se.timeout)
+	defer cancel()
 
-		rr := &RequestResponseWrapper{
-			w:   w,
-			req: r.WithContext(ctx),
-		}
-		err := se.client.Next(rr)
-		if err == nil {
-			return
-		}
+	rr := &RequestResponseWrapper{
+		w:   w,
+		req: r.WithContext(ctx),
+	}
+	err := se.client.Next(rr)
+	if err == nil {
+		return
+	}
 
-		var blocked *RequestBlockedError
-		if errors.As(err, &blocked) {
-			writeAPIError(w, blocked.Error(), http.StatusTooManyRequests)
-			return
-		}
-		writeAPIError(w, fmt.Sprintf("proxy error: %v", err), http.StatusInternalServerError)
-	})
+	var blocked *RequestBlockedError
+	if errors.As(err, &blocked) {
+		writeAPIError(w, blocked.Error(), http.StatusTooManyRequests)
+		return
+	}
+	writeAPIError(w, fmt.Sprintf("proxy error: %v", err), http.StatusInternalServerError)
 }
 
 // Init initializes the middleware chain
