@@ -3,6 +3,7 @@ package proxymw
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -14,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql/parser"
 )
 
 const (
@@ -68,8 +68,8 @@ type BackpressureQuery struct {
 }
 
 func (q BackpressureQuery) Validate() error {
-	if _, err := parser.ParseExpr(q.Query); err != nil {
-		return fmt.Errorf("invalid PromQL query %q: %w", q.Query, err)
+	if q.Query == "" {
+		return errors.New("empty backpressure query")
 	}
 	if wrappedInQuotes(q.Query) {
 		return ErrExtraQueryQuotes

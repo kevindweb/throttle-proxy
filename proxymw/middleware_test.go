@@ -73,7 +73,7 @@ func TestMiddlewareOrder(t *testing.T) {
 	r = r.WithContext(ctx)
 
 	w := &httptest.ResponseRecorder{}
-	serve.Proxy().ServeHTTP(w, r)
+	serve.ServeHTTP(w, r)
 	require.Equal(t, 1, serveCalls)
 	require.Equal(t, *r.Clone(ctx), *r)
 
@@ -146,7 +146,7 @@ func TestHangingClient(t *testing.T) {
 	wgInternal3.Add(1)
 	wg.Add(1)
 	go func() {
-		serve.Proxy().ServeHTTP(w, r)
+		serve.ServeHTTP(w, r)
 		wgInternal3.Done()
 	}()
 
