@@ -65,18 +65,8 @@ func main() {
 }
 
 func setupInsecureServer(ctx context.Context, cfg proxyutil.Config) (*http.Server, error) {
-	readTimeout, err := time.ParseDuration(cfg.ReadTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing read timeout: %v", err)
-	}
-
-	writeTimeout, err := time.ParseDuration(cfg.WriteTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing write timeout: %v", err)
-	}
-
 	if cfg.ProxyConfig.ClientTimeout == 0 {
-		cfg.ProxyConfig.ClientTimeout = 2 * readTimeout
+		cfg.ProxyConfig.ClientTimeout = 2 * cfg.ReadTimeout
 	}
 
 	routes, err := proxyhttp.NewRoutes(ctx, cfg)
@@ -94,8 +84,8 @@ func setupInsecureServer(ctx context.Context, cfg proxyutil.Config) (*http.Serve
 
 	srv := &http.Server{
 		Handler:      mux,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
 	}
 
 	go func() {
@@ -129,20 +119,10 @@ func setupInternalServer(cfg proxyutil.Config) (*http.Server, error) {
 		return nil, fmt.Errorf("failed to listen on internal address: %v", err)
 	}
 
-	readTimeout, err := time.ParseDuration(cfg.ReadTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing read timeout: %v", err)
-	}
-
-	writeTimeout, err := time.ParseDuration(cfg.WriteTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing write timeout: %v", err)
-	}
-
 	srv := &http.Server{
 		Handler:      h,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
 	}
 
 	go func() {

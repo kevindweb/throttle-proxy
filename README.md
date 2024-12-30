@@ -63,7 +63,7 @@ Build the docker-compose stack
 ```
 make all
 docker compose down
-docker-compose up --build
+docker compose up --build
 ```
 
 - Generate fake traffic with `./scripts/traffic_generator.py`

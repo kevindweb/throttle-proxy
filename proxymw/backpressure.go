@@ -124,6 +124,40 @@ type BackpressureConfig struct {
 	CongestionWindowMax       int                 `yaml:"congestion_window_max"`
 }
 
+func ParseBackpressureQueries(
+	bpQueries, bpQueryNames []string, bpWarnThresholds, bpEmergencyThresholds []float64,
+) ([]BackpressureQuery, error) {
+	n := len(bpQueries)
+	queries := make([]BackpressureQuery, n)
+	if len(bpQueryNames) != n && len(bpQueryNames) != 0 {
+		return nil, fmt.Errorf("number of backpressure query names should be 0 or %d", n)
+	}
+
+	if len(bpWarnThresholds) != n {
+		return nil, fmt.Errorf("expected %d warn thresholds for %d backpressure queries", n, n)
+	}
+
+	if len(bpEmergencyThresholds) != n {
+		return nil, fmt.Errorf(
+			"expected %d emergency thresholds for %d backpressure queries", n, n,
+		)
+	}
+
+	for i, query := range bpQueries {
+		queryName := ""
+		if len(bpQueryNames) > 0 {
+			queryName = bpQueryNames[i]
+		}
+		queries[i] = BackpressureQuery{
+			Name:               queryName,
+			Query:              query,
+			WarningThreshold:   bpWarnThresholds[i],
+			EmergencyThreshold: bpEmergencyThresholds[i],
+		}
+	}
+	return queries, nil
+}
+
 func (c BackpressureConfig) Validate() error {
 	if !c.EnableBackpressure {
 		return nil
