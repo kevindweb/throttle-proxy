@@ -29,8 +29,8 @@ func TestParseConfig(t *testing.T) {
 			cfg: proxyutil.Config{
 				Upstream:              "http://example.com",
 				InsecureListenAddress: ":8080",
-				ReadTimeout:           (time.Minute * 5).String(),
-				WriteTimeout:          (time.Minute * 5).String(),
+				ReadTimeout:           time.Minute * 5,
+				WriteTimeout:          time.Minute * 5,
 				ProxyPaths:            []string{},
 				PassthroughPaths:      []string{},
 				ProxyConfig: proxymw.Config{
@@ -52,8 +52,8 @@ func TestParseConfig(t *testing.T) {
 				"--internal-listen-address", ":9090",
 				"--proxy-paths", "/api/v2",
 				"--passthrough-paths", "/health,/metrics",
-				"--proxy-read-timeout", "2m",
-				"--proxy-write-timeout", "3m",
+				"--proxy-read-timeout", "2m0s",
+				"--proxy-write-timeout", "3m0s",
 				"--enable-observer=true",
 				"--enable-criticality=true",
 				"--enable-jitter",
@@ -79,8 +79,8 @@ func TestParseConfig(t *testing.T) {
 				PassthroughPaths:      []string{"/health", "/metrics"},
 				InsecureListenAddress: ":8080",
 				InternalListenAddress: ":9090",
-				ReadTimeout:           "2m",
-				WriteTimeout:          "3m",
+				ReadTimeout:           2 * time.Minute,
+				WriteTimeout:          3 * time.Minute,
 				ProxyConfig: proxymw.Config{
 					EnableCriticality: true,
 					EnableJitter:      true,
@@ -193,8 +193,8 @@ func TestParseConfig(t *testing.T) {
 				PassthroughPaths:      []string{"/api/v2"},
 				InsecureListenAddress: "0.0.0.0:7777",
 				InternalListenAddress: "0.0.0.0:7776",
-				ReadTimeout:           "5s",
-				WriteTimeout:          "5s",
+				ReadTimeout:           5 * time.Second,
+				WriteTimeout:          5 * time.Second,
 				ProxyConfig: proxymw.Config{
 					EnableJitter:   true,
 					JitterDelay:    time.Second * 5,
