@@ -8,6 +8,15 @@
 
 See [Netflix concurrency-limits](https://github.com/Netflix/concurrency-limits) for the inspiration.
 
+## Why Use This Project?
+
+**Throttle Proxy** is the best solution for ensuring the safety and stability of your distributed systems during load spikes. Here's why:
+
+- **Proven Algorithm**: Utilizes the Additive Increase/Multiplicative Decrease (AIMD) algorithm, inspired by TCP congestion control, to dynamically adjust request concurrency.
+- **Real-Time Metrics**: Leverages Prometheus metrics to make real-time decisions, ensuring your system adapts quickly to changing loads.
+- **Configurable and Flexible**: Allows you to set custom thresholds and monitor multiple signals, providing fine-grained control over your traffic management.
+- **Prevents Failures**: Helps prevent cascading failures and maintains system stability under unpredictable load conditions.
+
 ## Key Features
 
 - 📊 **Adaptive Traffic Management**: Automatically adjusts request concurrency based on real-time Prometheus metrics
