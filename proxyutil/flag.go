@@ -158,7 +158,7 @@ func ParseConfigFlags() (Config, error) {
 		return Config{}, err
 	}
 
-	queries, err := parseBackpressureQueries(
+	queries, err := ParseBackpressureQueries(
 		bpQueries, bpQueryNames, bpWarnThresholds, bpEmergencyThresholds,
 	)
 	if err != nil {
@@ -282,7 +282,7 @@ func parsePaths(paths string) ([]string, error) {
 	return pathList, nil
 }
 
-func parseBackpressureQueries(
+func ParseBackpressureQueries(
 	bpQueries, bpQueryNames []string, bpWarnThresholds, bpEmergencyThresholds []float64,
 ) ([]proxymw.BackpressureQuery, error) {
 	n := len(bpQueries)

@@ -158,8 +158,12 @@ func NewFromConfig(cfg Config, client ProxyClient) ProxyClient {
 
 // ServeHTTP processes requests through the middleware chain
 func (se *ServeEntry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), se.timeout)
-	defer cancel()
+	ctx := r.Context()
+	if se.timeout > 0 {
+		var cancel func()
+		ctx, cancel = context.WithTimeout(ctx, se.timeout)
+		defer cancel()
+	}
 
 	rr := &RequestResponseWrapper{
 		w:   w,
