@@ -2,7 +2,6 @@ package proxymw
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -15,6 +14,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+
+	"github.com/kevindweb/throttle-proxy/internal/util"
 )
 
 const (
@@ -22,7 +23,6 @@ const (
 	BackpressureUpdateCadence = 30 * time.Second
 	MonitorQueryTimeout       = 15 * time.Second
 	DefaultThrottleCurve      = 4.0
-	InstantQueryEndpoint      = "/api/v1/query"
 )
 
 var (
@@ -217,7 +217,7 @@ type Backpressure struct {
 	monitorClient *http.Client
 	monitorURL    string
 	queries       []BackpressureQuery
-	throttleFlags sync.Map
+	throttleFlags *util.SyncMap[BackpressureQuery, float64]
 	allowance     float64
 
 	client ProxyClient
@@ -246,6 +246,7 @@ func NewBackpressure(
 		warnGauge:      bpQueryWarnGauge,
 		emergencyGauge: bpQueryEmergencyGauge,
 		queryValGauge:  bpQueryValGauge,
+		throttleFlags:  util.NewSyncMap[BackpressureQuery, float64](),
 
 		monitorClient: &http.Client{
 			Timeout:   MonitorQueryTimeout,
@@ -287,62 +288,35 @@ func (bp *Backpressure) Next(rr Request) error {
 // preventing the other signals from actioning the congestion window.
 func (bp *Backpressure) metricsLoop(ctx context.Context) {
 	for _, q := range bp.queries {
-		go func(query BackpressureQuery) {
-			bp.metricLoop(ctx, query)
-		}(q)
-	}
-}
+		go func(q BackpressureQuery) {
+			ticker := time.NewTicker(BackpressureUpdateCadence)
+			defer ticker.Stop()
 
-// metricLoop pulls one PromQL metric on a loop to update whether requests should be throttled.
-// we only drop the global throttle when all metrics have dropped their own throttle flag
-func (bp *Backpressure) metricLoop(ctx context.Context, q BackpressureQuery) {
-	ticker := time.NewTicker(BackpressureUpdateCadence)
-	defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					curr, err := ValueFromPromQL(ctx, bp.monitorClient, bp.monitorURL, q.Query)
+					if err != nil {
+						bp.queryErrCount.WithLabelValues(q.Name).Inc()
+						log.Printf("querying metric '%s' returned error: %v", q.Query, err)
+						continue
+					}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			curr, err := bp.metricFired(ctx, q.Query)
-			if err != nil {
-				bp.queryErrCount.WithLabelValues(q.Name).Inc()
-				log.Printf("querying metric '%s' returned error: %v", q.Query, err)
-				continue
+					bp.queryValGauge.WithLabelValues(q.Name).Set(curr)
+					bp.updateThrottle(q, curr)
+				}
 			}
-
-			bp.queryValGauge.WithLabelValues(q.Name).Set(curr)
-			bp.updateThrottle(q, curr)
-		}
+		}(q)
 	}
 }
 
 func (bp *Backpressure) updateThrottle(q BackpressureQuery, curr float64) {
 	bp.throttleFlags.Store(q, q.throttlePercent(curr))
-
 	throttlePercent := 0.0
-	var err error
-	bp.throttleFlags.Range(func(key, value interface{}) bool {
-		query, ok := key.(BackpressureQuery)
-		if !ok {
-			log.Printf(
-				"error updating query '%s' throttle to %f: %v, expected query got %T",
-				q.Query, curr, err, query,
-			)
-			return true
-		}
-
-		val, ok := value.(float64)
-		if !ok {
-			bp.queryErrCount.WithLabelValues(query.Name).Inc()
-			log.Printf(
-				"error updating query '%s' throttle to %f: %v, expected float got %T",
-				q.Query, curr, err, val,
-			)
-			return true
-		}
-
-		throttlePercent = max(throttlePercent, val)
+	bp.throttleFlags.Range(func(_ BackpressureQuery, value float64) bool {
+		throttlePercent = max(throttlePercent, value)
 		return true
 	})
 
@@ -351,50 +325,6 @@ func (bp *Backpressure) updateThrottle(q BackpressureQuery, curr float64) {
 	bp.allowanceGauge.Set(bp.allowance)
 	bp.constrainWatermark()
 	bp.mu.Unlock()
-}
-
-// queryMetric checks if the PromQL expression returns a non-empty response (backpressure is firing)
-func (bp *Backpressure) metricFired(ctx context.Context, query string) (float64, error) {
-	u, err := url.Parse(bp.monitorURL + InstantQueryEndpoint)
-	if err != nil {
-		return 0, fmt.Errorf("parse monitor URL: %w", err)
-	}
-
-	q := u.Query()
-	q.Set("query", query)
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
-	if err != nil {
-		return 0, fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := bp.monitorClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("execute request: %w", err)
-	}
-
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	var prometheusResp PrometheusResponse
-	if err := json.NewDecoder(resp.Body).Decode(&prometheusResp); err != nil {
-		return 0, fmt.Errorf("decode response: %w", err)
-	}
-
-	results := prometheusResp.Data.Result
-	if len(results) != 1 {
-		return 0, fmt.Errorf("backpressure query must return exactly one value: %s", query)
-	}
-
-	res := float64(results[0].Value)
-	if res < 0 {
-		return 0, fmt.Errorf("backpressure query (%s) must have non-negative value: %f", query, res)
-	}
-
-	return res, nil
 }
 
 // check ensures the number of concurrent active requests stays within the allowed window.

@@ -1,17 +1,12 @@
 package proxymw
 
 import (
-	"bytes"
-	"context"
-	"errors"
-	"fmt"
-	"io"
-	"net/http"
-	"sync"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kevindweb/throttle-proxy/internal/util"
 )
 
 func TestBackpressureRelease(t *testing.T) {
@@ -94,135 +89,6 @@ func TestBackpressureRelease(t *testing.T) {
 	}
 }
 
-func TestMetricFired(t *testing.T) {
-	u := "http://localhost:9090"
-	for _, tt := range []struct {
-		name  string
-		err   error
-		val   float64
-		query string
-		bp    *Backpressure
-	}{
-		{
-			name:  "error response",
-			err:   errors.New("backpressure query must return exactly one value: sum(throughput)"),
-			query: "sum(throughput)",
-			bp: &Backpressure{
-				monitorClient: &http.Client{
-					Transport: &Mocker{
-						RoundTripFunc: func(r *http.Request) (*http.Response, error) {
-							return &http.Response{
-								Body: io.NopCloser(bytes.NewBufferString(
-									`{
-									  "status": "success",
-									  "data": {
-									    "resultType": "vector",
-									    "result": [
-									      {
-									        "metric": {},
-									        "value": [1731988543.752, "90"]
-									      },
-										  {
-									        "metric": {},
-									        "value": [1731988543.752, "95"]
-									      }
-									    ]
-									  }
-									}`)),
-								StatusCode: http.StatusOK,
-							}, nil
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "negative float error",
-			err: errors.New(
-				"backpressure query (sum(throughput)) must have non-negative value: -90.000000",
-			),
-			query: "sum(throughput)",
-			bp: &Backpressure{
-				monitorClient: &http.Client{
-					Transport: &Mocker{
-						RoundTripFunc: func(r *http.Request) (*http.Response, error) {
-							return &http.Response{
-								Body: io.NopCloser(bytes.NewBufferString(
-									`{
-									  "status": "success",
-									  "data": {
-									    "resultType": "vector",
-									    "result": [
-									      {
-									        "metric": {},
-									        "value": [1731988543.752, "-90"]
-									      }
-									    ]
-									  }
-									}`)),
-								StatusCode: http.StatusOK,
-							}, nil
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "bad status code throws error",
-			err:  fmt.Errorf("unexpected status code: %d", http.StatusBadGateway),
-			bp: &Backpressure{
-				monitorURL: u,
-				monitorClient: &http.Client{
-					Transport: &Mocker{
-						RoundTripFunc: func(_ *http.Request) (*http.Response, error) {
-							return &http.Response{
-								StatusCode: http.StatusBadGateway,
-							}, nil
-						},
-					},
-				},
-			},
-		},
-		{
-			name:  "valid request and response",
-			query: "sum(throughput)",
-			val:   90,
-			bp: &Backpressure{
-				monitorURL: u,
-				monitorClient: &http.Client{
-					Transport: &Mocker{
-						RoundTripFunc: func(r *http.Request) (*http.Response, error) {
-							require.Equal(t, u+InstantQueryEndpoint+"?query=sum%28throughput%29", r.URL.String())
-							return &http.Response{
-								Body: io.NopCloser(bytes.NewBufferString(
-									`{
-									  "status": "success",
-									  "data": {
-									    "resultType": "vector",
-									    "result": [
-									      {
-									        "metric": {},
-									        "value": [1731988543.752, "90"]
-									      }
-									    ]
-									  }
-									}`)),
-								StatusCode: http.StatusOK,
-							}, nil
-						},
-					},
-				},
-			},
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			val, err := tt.bp.metricFired(context.Background(), tt.query)
-			require.Equal(t, tt.err, err)
-			require.Equal(t, tt.val, val)
-		})
-	}
-}
-
 func TestUpdateThrottle(t *testing.T) {
 	testGauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{Name: "fake_gauge_sensitive_bp_query"},
@@ -242,7 +108,7 @@ func TestUpdateThrottle(t *testing.T) {
 				watermark:      80,
 				max:            100,
 				allowance:      0.2,
-				throttleFlags:  sync.Map{},
+				throttleFlags:  util.NewSyncMap[BackpressureQuery, float64](),
 				watermarkGauge: testGauge,
 				allowanceGauge: testGauge,
 			},
@@ -270,12 +136,15 @@ func TestUpdateThrottle(t *testing.T) {
 				watermark:      80,
 				max:            100,
 				allowance:      0.2,
-				throttleFlags:  sync.Map{},
+				throttleFlags:  util.NewSyncMap[BackpressureQuery, float64](),
 				watermarkGauge: testGauge,
 				allowanceGauge: testGauge,
 			},
 			setup: func(b *Backpressure) {
-				b.throttleFlags.Store("previous", 0.8)
+				previous := BackpressureQuery{
+					Query: "previous",
+				}
+				b.throttleFlags.Store(previous, 0.8)
 			},
 			query: BackpressureQuery{
 				Query:              `sum(rate(http_requests))`,
@@ -296,7 +165,8 @@ func TestUpdateThrottle(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.bp.updateThrottle(tt.query, tt.update)
-			tt.bp.throttleFlags = sync.Map{}
+			tt.bp.throttleFlags = util.NewSyncMap[BackpressureQuery, float64]()
+			tt.expect.throttleFlags = util.NewSyncMap[BackpressureQuery, float64]()
 			require.Equal(t, tt.expect, tt.bp)
 		})
 	}
