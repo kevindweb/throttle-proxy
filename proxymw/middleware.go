@@ -136,13 +136,7 @@ func NewServeFuncFromConfig(cfg Config, next http.HandlerFunc) http.HandlerFunc 
 
 func NewFromConfig(cfg Config, client ProxyClient) ProxyClient {
 	if cfg.EnableBackpressure {
-		client = NewBackpressure(
-			client,
-			cfg.CongestionWindowMin,
-			cfg.CongestionWindowMax,
-			cfg.BackpressureQueries,
-			cfg.BackpressureMonitoringURL,
-		)
+		client = NewBackpressure(client, cfg.BackpressureConfig)
 	}
 
 	if cfg.EnableJitter {

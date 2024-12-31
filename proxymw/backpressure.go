@@ -225,17 +225,11 @@ type Backpressure struct {
 
 var _ ProxyClient = &Backpressure{}
 
-func NewBackpressure(
-	client ProxyClient,
-	minWindow int,
-	maxWindow int,
-	queries []BackpressureQuery,
-	monitorURL string,
-) *Backpressure {
+func NewBackpressure(client ProxyClient, cfg BackpressureConfig) *Backpressure {
 	return &Backpressure{
-		watermark:      minWindow,
-		min:            minWindow,
-		max:            maxWindow,
+		watermark:      cfg.CongestionWindowMin,
+		min:            cfg.CongestionWindowMin,
+		max:            cfg.CongestionWindowMax,
 		allowance:      1,
 		minGauge:       bpMinGauge,
 		maxGauge:       bpMaxGauge,
@@ -252,8 +246,8 @@ func NewBackpressure(
 			Timeout:   MonitorQueryTimeout,
 			Transport: http.DefaultTransport,
 		},
-		monitorURL: monitorURL,
-		queries:    queries,
+		monitorURL: cfg.BackpressureMonitoringURL,
+		queries:    cfg.BackpressureQueries,
 		client:     client,
 	}
 }
