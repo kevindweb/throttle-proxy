@@ -72,7 +72,8 @@ class TrafficGenerator:
             jitter = random.uniform(self.config.min_delay, self.config.max_delay)  # noqa: S311
             time.sleep(jitter)
 
-            response = requests.get(self.config.url, headers=self.config.headers, timeout=200)
+            headers = self.config.headers
+            response = requests.get(self.config.url, headers=headers, timeout=200)
         except Exception as e:
             return f"Request {request_id} failed: {e}"
         else:
@@ -117,7 +118,7 @@ def parse_arguments() -> TrafficGeneratorConfig:
         "--url",
         help="Target URL for requests",
         type=str,
-        default="http://localhost:7777/api/v1/query?query=up",
+        default=TrafficGeneratorConfig.url,
     )
 
     args = parser.parse_args()

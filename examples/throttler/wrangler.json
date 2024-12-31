@@ -1,0 +1,43 @@
+{
+  "name": "throttler",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-12-05",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "UPSTREAM": "jsonplaceholder.typicode.com",
+    "USE_HTTPS": true,
+    "ENABLE_JITTER": true,
+    "JITTER_DELAY": 100,
+    "BACKPRESSURE": {
+      "ENABLE_BACKPRESSURE": true,
+      "CONGESTION_WINDOW_MIN": 10,
+      "CONGESTION_WINDOW_MAX": 100,
+      "QUERIES": [
+        {
+          "NAME": "test",
+          "QUERY": "test",
+          "WARN_THRESHOLD": 4,
+          "EMERGENCY_THRESHOLD": 15
+        }
+      ]
+    }
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "COUNTERS",
+        "class_name": "Counter"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": [
+        "Counter"
+      ]
+    }
+  ]
+}
