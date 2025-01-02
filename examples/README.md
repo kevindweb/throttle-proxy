@@ -1,14 +1,12 @@
 # Examples
 
-## Install
+## Go HTTP Server
 
 `go install github.com/kevindweb/throttle-proxy@latest`
 
-### Locally
+### Build Locally
 
 `make build`
-
-## Usage
 
 ### Config File
 
@@ -39,4 +37,28 @@ throttle-proxy -upstream=http://localhost:9095 \
     -bp-query='sum(rate(error_rate[1m]))' \
     -bp-warn=0.40 \
     -bp-emergency=0.80
+```
+
+## Go RoundTripper Client
+
+```
+CONFIG_FILE="examples/config.yaml" go run examples/roundtripper/main.go
+```
+
+## TypeScript Throttler Cloudflare Worker
+
+Start with [Cloudflare Workers docs](https://developers.cloudflare.com/workers/get-started/guide/). The configuration is in `examples/throttler/wrangler.json`
+
+### Develop Worker Locally
+
+```
+cd examples/throttler
+wrangler dev
+```
+
+### Deploy Worker to your Production Environment
+
+```
+cd examples/throttler
+wrangler deploy
 ```

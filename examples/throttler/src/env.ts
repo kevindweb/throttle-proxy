@@ -1,4 +1,5 @@
 import { Counter } from "durable_counter";
+import { QueryValues } from "durable_query_values";
 
 export interface Env {
   UPSTREAM: string;
@@ -7,16 +8,17 @@ export interface Env {
   JITTER_DELAY: number;
   BACKPRESSURE: Backpressure;
   COUNTERS: DurableObjectNamespace<Counter>;
+  QUERY_VALUES: DurableObjectNamespace<QueryValues>;
 }
 
-interface Backpressure {
-  ENABLE_BACKPRESSURE: boolean;
-  CONGESTION_WINDOW_MIN: number;
-  CONGESTION_WINDOW_MAX: number;
+export interface Backpressure {
+  ENABLED: boolean;
+  CWDN_MIN: number;
+  CWDN_MAX: number;
   QUERIES: BackpressureQuery[];
 }
 
-interface BackpressureQuery {
+export interface BackpressureQuery {
   NAME: string;
   QUERY: string;
   WARN_THRESHOLD: number;

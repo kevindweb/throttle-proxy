@@ -11,9 +11,9 @@
     "ENABLE_JITTER": true,
     "JITTER_DELAY": 100,
     "BACKPRESSURE": {
-      "ENABLE_BACKPRESSURE": true,
-      "CONGESTION_WINDOW_MIN": 10,
-      "CONGESTION_WINDOW_MAX": 100,
+      "ENABLED": true,
+      "CWDN_MIN": 10,
+      "CWDN_MAX": 100,
       "QUERIES": [
         {
           "NAME": "test",
@@ -27,6 +27,10 @@
   "durable_objects": {
     "bindings": [
       {
+        "name": "QUERY_VALUES",
+        "class_name": "QueryValues"
+      },
+      {
         "name": "COUNTERS",
         "class_name": "Counter"
       }
@@ -38,6 +42,11 @@
       "new_classes": [
         "Counter"
       ]
+    }
+  ],
+  "tail_consumers": [
+    {
+      "service": "throttler"
     }
   ]
 }

@@ -14,9 +14,10 @@ export const exitMiddleware: Middleware = async (req, env, _) => {
 const METHODS_WITH_BODY = ["POST", "PUT", "PATCH"] as const;
 
 /**
- * Handles the proxy request and applies necessary transformations
- * @param request Original request to be proxied
- * @returns Modified response
+ * Handles the proxy request and applies necessary transformations.
+ * @param request - The original request to be proxied.
+ * @param env - The environment configuration.
+ * @returns A modified response from the upstream server.
  */
 async function proxy(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
