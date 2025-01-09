@@ -13,6 +13,8 @@ services:
       -enable-jitter=true
       -jitter-delay=1s
       -enable-observer=true
+      -enable-blocker=true
+      -block-pattern=X-User-Agent=to-block.*
       -enable-bp=true
       -bp-monitoring-url=http://prom:9090
       -bp-min-window=1

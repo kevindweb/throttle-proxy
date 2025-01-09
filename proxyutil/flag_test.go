@@ -58,6 +58,9 @@ func TestParseConfig(t *testing.T) {
 				"--enable-criticality=true",
 				"--enable-jitter",
 				"--jitter-delay", "100ms",
+				"--enable-blocker",
+				"--block-pattern=X-user-agent=bad-service.*",
+				"--block-pattern=X-custom-header=.*-unsafe",
 				"--enable-bp",
 				"--bp-monitoring-url", "http://metrics.example.com",
 				"--bp-query=sum(rate(http_request_count))",
@@ -86,6 +89,13 @@ func TestParseConfig(t *testing.T) {
 					EnableJitter:      true,
 					JitterDelay:       time.Millisecond * 100,
 					EnableObserver:    true,
+					BlockerConfig: proxymw.BlockerConfig{
+						EnableBlocker: true,
+						BlockPatterns: []string{
+							"X-user-agent=bad-service.*",
+							"X-custom-header=.*-unsafe",
+						},
+					},
 					BackpressureConfig: proxymw.BackpressureConfig{
 						EnableBackpressure:        true,
 						BackpressureMonitoringURL: "http://metrics.example.com",

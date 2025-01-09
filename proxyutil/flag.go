@@ -61,6 +61,7 @@ func ParseConfigFlags() (Config, error) {
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 
 	var (
+		blockPatterns         StringSlice
 		bpQueries             StringSlice
 		bpQueryNames          StringSlice
 		bpWarnThresholds      Float64Slice
@@ -86,6 +87,10 @@ func ParseConfigFlags() (Config, error) {
 	flags.DurationVar(&cfg.ProxyConfig.JitterDelay, "jitter-delay", 0, "Random jitter delay duration")
 	flags.BoolVar(&cfg.ProxyConfig.EnableObserver, "enable-observer", false, "Enable middleware metrics collection")
 
+	// Blocker settings
+	flags.BoolVar(&cfg.ProxyConfig.EnableBlocker, "enable-blocker", false, "Enable http header request blocking")
+	flags.Var(&blockPatterns, "block-pattern", "Header with regex matcher to block. Ex. `X-user-agent=service-to-block.*`")
+
 	// Backpressure settings
 	bp := &cfg.ProxyConfig.BackpressureConfig
 	flags.BoolVar(&bp.EnableBackpressure, "enable-bp", false, "Enable backpressure-based throttling")
@@ -108,6 +113,8 @@ func ParseConfigFlags() (Config, error) {
 	if configFile != "" {
 		return ParseConfigFile(configFile)
 	}
+
+	cfg.ProxyConfig.BlockPatterns = blockPatterns
 
 	var err error
 	if bp.BackpressureQueries, err = proxymw.ParseBackpressureQueries(
