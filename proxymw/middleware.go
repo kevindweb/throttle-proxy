@@ -79,6 +79,7 @@ func (c *RequestResponseWrapper) ResponseWriter() http.ResponseWriter {
 // Config holds all middleware configuration options
 type Config struct {
 	BackpressureConfig `yaml:"backpressure_config"`
+	BlockerConfig      `yaml:"blocker_config"`
 	EnableJitter       bool          `yaml:"enable_jitter"`
 	JitterDelay        time.Duration `yaml:"jitter_delay"`
 	EnableObserver     bool          `yaml:"enable_observer"`
@@ -100,6 +101,12 @@ func (c Config) Validate() error {
 	if c.EnableBackpressure {
 		if err := c.BackpressureConfig.Validate(); err != nil {
 			errs = append(errs, fmt.Errorf("backpressure config: %w", err))
+		}
+	}
+
+	if c.EnableBlocker {
+		if err := c.BlockerConfig.Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("blocker config: %w", err))
 		}
 	}
 
@@ -141,6 +148,10 @@ func NewFromConfig(cfg Config, client ProxyClient) ProxyClient {
 
 	if cfg.EnableJitter {
 		client = NewJitterer(client, cfg.JitterDelay, cfg.EnableCriticality)
+	}
+
+	if cfg.EnableBlocker {
+		client = NewBlocker(client, cfg.BlockerConfig)
 	}
 
 	if cfg.EnableObserver {

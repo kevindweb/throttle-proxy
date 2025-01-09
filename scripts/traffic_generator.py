@@ -77,7 +77,7 @@ class TrafficGenerator:
         except Exception as e:
             return f"Request {request_id} failed: {e}"
         else:
-            return f"Request {request_id}: Status Code {response.status_code}"
+            return f"Request {request_id}: Status Code {response.status_code} {response.json()}"
 
     def generate_traffic(self) -> None:
         """Generate HTTP traffic using thread pool executor. Logs results of each request."""

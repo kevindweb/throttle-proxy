@@ -32,6 +32,11 @@ func TestMiddlewareOrder(t *testing.T) {
 			CongestionWindowMax:       100,
 		},
 
+		BlockerConfig: BlockerConfig{
+			EnableBlocker: true,
+			BlockPatterns: []string{"X-block=user"},
+		},
+
 		EnableJitter: true,
 		JitterDelay:  time.Second,
 
@@ -58,7 +63,8 @@ func TestMiddlewareOrder(t *testing.T) {
 
 	c := serve.client
 	observer := c.(*Observer)
-	jitterer := observer.client.(*Jitterer)
+	blocker := observer.client.(*Blocker)
+	jitterer := blocker.client.(*Jitterer)
 	backpressure := jitterer.client.(*Backpressure)
 	exit := backpressure.client.(*ServeExit)
 	require.NotNil(t, exit.next)
@@ -82,7 +88,8 @@ func TestMiddlewareOrder(t *testing.T) {
 
 	rtc := rt.client
 	observer = rtc.(*Observer)
-	jitterer = observer.client.(*Jitterer)
+	blocker = observer.client.(*Blocker)
+	jitterer = blocker.client.(*Jitterer)
 	backpressure = jitterer.client.(*Backpressure)
 	rtExit := backpressure.client.(*RoundTripperExit)
 	require.NotNil(t, rtExit.transport)
