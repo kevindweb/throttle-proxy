@@ -21,6 +21,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	go.uber.org/automaxprocs v1.6.0
-	golang.org/x/sys v0.28.0 // indirect
-	google.golang.org/protobuf v1.36.1 // indirect
+	golang.org/x/sys v0.29.0 // indirect
+	google.golang.org/protobuf v1.36.3 // indirect
 )
