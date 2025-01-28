@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Backpressure Monitor</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        margin: 0;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .chart-container {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      }
+
+      pre {
+        overflow-x: auto;
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 4px;
+      }
+
+      .loading {
+        text-align: center;
+        padding: 20px;
+        font-style: italic;
+        color: #666;
+      }
+
+      .error {
+        background: #fee2e2;
+        border: 1px solid #ef4444;
+        color: #dc2626;
+        padding: 12px;
+        border-radius: 6px;
+        margin: 20px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Backpressure Monitor</h1>
+      <div id="error" class="error" style="display: none"></div>
+      <div id="loading" class="loading">Loading data...</div>
+      <div id="charts"></div>
+    </div>
+
+    <script
+      type="module"
+      src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"
+    ></script>
+    <script
+      type="module"
+      src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/1.3.0/chartjs-plugin-annotation.min.js"
+    ></script>
+    <script>
+      const bpKey = "backpressure_percent";
+
+      // Format timestamps to locale string
+      function formatTime(timestamp) {
+        return new Date(parseInt(timestamp)).toLocaleString();
+      }
+
+      // Create a chart for a specific metric
+      function createChart(metricKey, query, data) {
+        const chartContainer = document.createElement("div");
+        chartContainer.className = "chart-container";
+
+        const canvas = document.createElement("canvas");
+        chartContainer.appendChild(canvas);
+        document.getElementById("charts").appendChild(chartContainer);
+
+        const annotation =
+          metricKey !== bpKey
+            ? {
+                annotations: {
+                  warnLine: {
+                    type: "line",
+                    yMin: query.warn,
+                    yMax: query.warn,
+                    borderColor: "orange",
+                    borderWidth: 2,
+                    label: {
+                      content: "Warn",
+                      enabled: true,
+                      position: "start",
+                    },
+                  },
+                  emergencyLine: {
+                    type: "line",
+                    yMin: query.emergency,
+                    yMax: query.emergency,
+                    borderColor: "red",
+                    borderWidth: 2,
+                    label: {
+                      content: "Emergency",
+                      enabled: true,
+                      position: "start",
+                    },
+                  },
+                },
+              }
+            : {};
+
+        const ctx = canvas.getContext("2d");
+        new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: data.map((point) => formatTime(point.timestamp)),
+            datasets: [
+              {
+                label: metricKey,
+                data: data.map((point) => point.value),
+                borderColor: "#2563eb",
+                tension: 0.1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: `${metricKey} Over Time`,
+              },
+              annotation,
+            },
+            scales: {
+              y: {
+                beginAtZero: false,
+              },
+            },
+          },
+        });
+      }
+
+      // Load queries from server
+      async function loadQueries() {
+        const response = await fetch("/queries");
+        if (!response.ok) {
+          throw new Error(`Failed to load queries: ${response.status}`);
+        }
+        const queries = await response.json();
+        return queries.reduce((map, query) => {
+          map[query.name] = query;
+          return map;
+        }, {});
+      }
+
+      // Process cache data and render charts
+      function processCacheData(cache, queryMap) {
+        document.getElementById("charts").innerHTML = "";
+
+        const params = new URLSearchParams(window.location.search);
+        const startTime = params.get("start")
+          ? parseInt(params.get("start"))
+          : null;
+        const endTime = params.get("end") ? parseInt(params.get("end")) : null;
+
+        const uniqueMetrics = new Set(
+          Object.values(cache.updates).flatMap((update) => Object.keys(update))
+        );
+
+        const metrics = Array.from(uniqueMetrics).sort((a, b) =>
+          a === bpKey ? -1 : b === bpKey ? 1 : 0
+        );
+
+        metrics.forEach((metricKey) => {
+          const timeSeriesData = Object.entries(cache.updates)
+            .map(([timestamp, values]) => ({
+              timestamp,
+              value: values[metricKey],
+            }))
+            .filter((point) => {
+              const ts = parseInt(point.timestamp);
+              return (
+                (!startTime || ts >= startTime) && (!endTime || ts <= endTime)
+              );
+            })
+            .sort((a, b) => parseInt(a.timestamp) - parseInt(b.timestamp));
+
+          createChart(metricKey, queryMap[metricKey], timeSeriesData);
+        });
+      }
+
+      // Display error message
+      function showError(message) {
+        const errorDiv = document.getElementById("error");
+        errorDiv.textContent = message;
+        errorDiv.style.display = "block";
+        document.getElementById("loading").style.display = "none";
+      }
+
+      // Fetch backpressure data
+      async function backpressure() {
+        const response = await fetch("/");
+        if (!response.ok) {
+          throw new Error(`Failed to fetch backpressure: ${response.status}`);
+        }
+        return (await response.json()).backpressure;
+      }
+
+      // Load and refresh data periodically
+      async function loadData() {
+        try {
+          const bp = await backpressure();
+          const queryMap = await loadQueries();
+          const response = await fetch("/cache");
+          if (!response.ok) {
+            throw new Error(`Failed to load cache: ${response.status}`);
+          }
+          const cache = await response.json();
+          document.getElementById("loading").style.display = "none";
+          document.getElementById("error").style.display = "none";
+          processCacheData(cache, queryMap);
+        } catch (error) {
+          showError(error.message);
+        }
+      }
+
+      loadData();
+      setInterval(loadData, 60000);
+    </script>
+  </body>
+</html>
