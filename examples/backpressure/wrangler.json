@@ -1,0 +1,40 @@
+{
+  "name": "backpressure-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-01-25",
+  "kv_namespaces": [
+    {
+      "binding": "BACKPRESSURE_KV",
+      "id": "your-unique-kv-namespace-id",
+      "preview_id": "your-preview-kv-namespace-id"
+    }
+  ],
+  "vars": {
+    "Queries": [
+      {
+        "name": "random-number-between-100-1000",
+        "type": "http-endpoint",
+        "config": "https://www.randomnumberapi.com/api/v1.0/random?min=100&max=1000&count=1",
+        "warn": 500,
+        "emergency": 900
+      },
+      {
+        "name": "memory-pressure",
+        "type": "workers-kv",
+        "config": "",
+        "warn": 500,
+        "emergency": 900
+      }
+    ]
+  },
+  "assets": {
+    "directory": "src",
+    "pattern": "ui.html"
+  },
+  "dev": {
+    "port": 8787
+  },
+  "build": {
+    "entry_point": "src/index.ts"
+  }
+}
