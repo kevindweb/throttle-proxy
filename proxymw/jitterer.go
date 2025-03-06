@@ -60,15 +60,12 @@ func (j *Jitterer) sleep(rr Request, delay time.Duration) {
 }
 
 func (j *Jitterer) getDelay(rr Request) (time.Duration, error) {
-	delay := j.delay
-	if !j.criticality {
-		return delay, nil
-	}
-
-	if ParseHeaderKey(rr, HeaderCriticality) == CriticalityCriticalPlus {
+	if j.criticality && ParseHeaderKey(rr, HeaderCriticality) == CriticalityCriticalPlus {
+		// do not jitter if request is critical
 		return NoJitter, nil
 	}
 
+	delay := j.delay
 	canWait := ParseHeaderKey(rr, HeaderCanWait)
 	if canWait == "" {
 		return delay, nil

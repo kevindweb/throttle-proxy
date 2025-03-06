@@ -147,7 +147,7 @@ func TestHangingClient(t *testing.T) {
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://thanos.io", http.NoBody)
 	require.NoError(t, err)
 
-	w := &httptest.ResponseRecorder{}
+	w := httptest.NewRecorder()
 	wgInternal.Add(1)
 	wgInternal2.Add(1)
 	wgInternal3.Add(1)

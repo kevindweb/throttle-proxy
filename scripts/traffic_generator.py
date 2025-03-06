@@ -16,7 +16,7 @@ import requests
 class TrafficGeneratorConfig:
     """Configuration for the traffic generator."""
 
-    url: str = "http://localhost:7777/api/v1/query?query=up"
+    url: str = "http://localhost:7777/api/data"
     headers: dict[str, str] = field(default_factory=dict)
     min_delay: float = 0.01
     max_delay: float = 1.0
@@ -106,7 +106,13 @@ def parse_arguments() -> TrafficGeneratorConfig:
         action="store_true",
         default=False,
     )
-    parser.add_argument("-n", "--num-requests", help="Total requests to send", type=int, default=10)
+    parser.add_argument(
+        "-n",
+        "--num-requests",
+        help="Total requests to send",
+        type=int,
+        default=10,
+    )
     parser.add_argument(
         "-c",
         "--concurrent-workers",

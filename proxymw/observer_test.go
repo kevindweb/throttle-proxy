@@ -33,8 +33,8 @@ func TestObserverNextError(t *testing.T) {
 				reqCounter: prometheus.NewCounter(
 					prometheus.CounterOpts{Name: "block_test_request_count"},
 				),
-				latencyCounter: prometheus.NewCounter(
-					prometheus.CounterOpts{Name: "block_test_request_latency_ms"},
+				latencyHist: prometheus.NewHistogram(
+					prometheus.HistogramOpts{Name: "block_test_request_latency_ms"},
 				),
 				activeGauge: prometheus.NewGauge(
 					prometheus.GaugeOpts{Name: "block_test_active_requests"},
@@ -70,8 +70,8 @@ func TestObserverNextError(t *testing.T) {
 				reqCounter: prometheus.NewCounter(
 					prometheus.CounterOpts{Name: "block_test_request_count"},
 				),
-				latencyCounter: prometheus.NewCounter(
-					prometheus.CounterOpts{Name: "block_test_request_latency_ms"},
+				latencyHist: prometheus.NewHistogram(
+					prometheus.HistogramOpts{Name: "block_test_request_latency_ms"},
 				),
 				activeGauge: prometheus.NewGauge(
 					prometheus.GaugeOpts{Name: "block_test_active_requests"},
@@ -98,8 +98,8 @@ func TestObserverNextError(t *testing.T) {
 				reqCounter: prometheus.NewCounter(
 					prometheus.CounterOpts{Name: "normal_err_test_request_count"},
 				),
-				latencyCounter: prometheus.NewCounter(
-					prometheus.CounterOpts{Name: "normal_err_test_request_latency_ms"},
+				latencyHist: prometheus.NewHistogram(
+					prometheus.HistogramOpts{Name: "normal_err_test_request_latency_ms"},
 				),
 				activeGauge: prometheus.NewGauge(
 					prometheus.GaugeOpts{Name: "normal_err_test_active_requests"},
@@ -135,8 +135,8 @@ func TestObserverNextError(t *testing.T) {
 				reqCounter: prometheus.NewCounter(
 					prometheus.CounterOpts{Name: "no_err_test_request_count"},
 				),
-				latencyCounter: prometheus.NewCounter(
-					prometheus.CounterOpts{Name: "no_err_test_request_latency_ms"},
+				latencyHist: prometheus.NewHistogram(
+					prometheus.HistogramOpts{Name: "no_err_test_request_latency_ms"},
 				),
 				activeGauge: prometheus.NewGauge(
 					prometheus.GaugeOpts{Name: "no_err_test_active_requests"},
