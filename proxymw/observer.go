@@ -23,9 +23,14 @@ var (
 	reqCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "proxymw_request_count",
 	})
-	latencyCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "proxymw_request_latency_ms",
+
+	ms          = float64(time.Millisecond.Milliseconds())
+	minute      = float64(time.Minute.Milliseconds())
+	latencyHist = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "proxymw_request_latency_ms",
+		Buckets: prometheus.ExponentialBucketsRange(ms, 10*minute, 12),
 	})
+
 	activeGauge = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "proxymw_active_requests",
 	})
@@ -34,12 +39,12 @@ var (
 // Observer wraps a ProxyClient to emit metrics such as error rate and blocked requests.
 // Each client that blocks requests should tag their errors with a client type to filter metrics.
 type Observer struct {
-	client         ProxyClient
-	errCounter     prometheus.Counter
-	blockCounter   *prometheus.CounterVec
-	reqCounter     prometheus.Counter
-	latencyCounter prometheus.Counter
-	activeGauge    prometheus.Gauge
+	client       ProxyClient
+	errCounter   prometheus.Counter
+	blockCounter *prometheus.CounterVec
+	reqCounter   prometheus.Counter
+	latencyHist  prometheus.Histogram
+	activeGauge  prometheus.Gauge
 }
 
 var _ ProxyClient = &Observer{}
@@ -47,12 +52,12 @@ var _ ProxyClient = &Observer{}
 // NewObserver creates a new Observer wrapping the provided ProxyClient.
 func NewObserver(client ProxyClient) *Observer {
 	return &Observer{
-		client:         client,
-		errCounter:     errCounter,
-		blockCounter:   blockCounter,
-		reqCounter:     reqCounter,
-		latencyCounter: latencyCounter,
-		activeGauge:    activeGauge,
+		client:       client,
+		errCounter:   errCounter,
+		blockCounter: blockCounter,
+		reqCounter:   reqCounter,
+		latencyHist:  latencyHist,
+		activeGauge:  activeGauge,
 	}
 }
 
@@ -70,7 +75,7 @@ func (o *Observer) Next(rr Request) error {
 	err := o.executeNext(rr)
 
 	o.reqCounter.Inc()
-	o.latencyCounter.Add(float64(time.Since(start).Milliseconds()))
+	o.latencyHist.Observe(float64(time.Since(start).Milliseconds()))
 
 	if err != nil {
 		var blocked *RequestBlockedError

@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: sandbox/Dockerfile.throttle-proxy
     command: >
-      -upstream=http://prom:9090
+      -upstream=http://traffic-server:6999
       -insecure-listen-address=0.0.0.0:7777
       -internal-listen-address=0.0.0.0:7776
       -proxy-write-timeout=1m
@@ -30,6 +30,19 @@ services:
     ports:
       - 7777:7777
       - 7776:7776
+    depends_on:
+      - traffic-server
+
+  traffic-server:
+    build:
+      context: .
+      dockerfile: sandbox/Dockerfile.traffic-server
+    container_name: traffic-server
+    ports:
+      - "6999:6999" # Expose the server's port
+    environment:
+      LATENCY: 5 # Mock latency for the server
+      ERROR_RATE: 0.1 # Rate of 5xx errors from the server
 
   grafana:
     image: grafana/grafana:11.1.7
