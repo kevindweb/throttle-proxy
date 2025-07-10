@@ -36,7 +36,7 @@ func ValueFromPromQL(
 		return 0, fmt.Errorf("execute request: %w", err)
 	}
 
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // ignore body close
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
