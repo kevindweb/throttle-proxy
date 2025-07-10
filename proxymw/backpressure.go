@@ -122,6 +122,10 @@ type BackpressureConfig struct {
 	BackpressureQueries       []BackpressureQuery `yaml:"backpressure_queries"`
 	CongestionWindowMin       int                 `yaml:"congestion_window_min"`
 	CongestionWindowMax       int                 `yaml:"congestion_window_max"`
+	// EnableLowCostBypass assumes proxy requests are Prometheus queries.
+	// If the promQL will query data more than 2 hours ago, the query is considered high cost.
+	// When enabled, low cost queries bypass the backpressure congestion control queue.
+	EnableLowCostBypass bool `yaml:"enable_low_cost_bypass"`
 }
 
 func ParseBackpressureQueries(
@@ -220,6 +224,8 @@ type Backpressure struct {
 	throttleFlags *util.SyncMap[BackpressureQuery, float64]
 	allowance     float64
 
+	lowCostBypass bool
+
 	client ProxyClient
 }
 
@@ -241,6 +247,8 @@ func NewBackpressure(client ProxyClient, cfg BackpressureConfig) *Backpressure {
 		emergencyGauge: bpQueryEmergencyGauge,
 		queryValGauge:  bpQueryValGauge,
 		throttleFlags:  util.NewSyncMap[BackpressureQuery, float64](),
+
+		lowCostBypass: cfg.EnableLowCostBypass,
 
 		monitorClient: &http.Client{
 			Timeout:   MonitorQueryTimeout,
@@ -270,6 +278,14 @@ func (bp *Backpressure) Init(ctx context.Context) {
 }
 
 func (bp *Backpressure) Next(rr Request) error {
+	if bp.lowCostBypass {
+		if lowCost, err := LowCostRequest(rr); err != nil {
+			return err
+		} else if lowCost {
+			return bp.client.Next(rr)
+		}
+	}
+
 	if err := bp.check(); err != nil {
 		return err
 	}

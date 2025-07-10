@@ -44,7 +44,7 @@ func main() {
 		log.Fatal(fmt.Errorf("failed to make request: %w", err))
 	}
 
-	resp, err := c.Do(request)
+	resp, err := c.Do(request) // nolint:bodyclose // ignore body close
 	if err != nil {
 		log.Fatal(err)
 	}

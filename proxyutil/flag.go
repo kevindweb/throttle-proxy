@@ -200,7 +200,7 @@ func ParseFile[T any](configFile string) (cfg T, err error) {
 	if err != nil {
 		return cfg, fmt.Errorf("error opening config file: %w", err)
 	}
-	defer file.Close()
+	defer file.Close() //nolint:errcheck // ignore body close
 
 	if err := yaml.NewDecoder(file).Decode(&cfg); err != nil {
 		return cfg, fmt.Errorf("error decoding YAML: %w", err)
