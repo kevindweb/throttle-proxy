@@ -2,10 +2,12 @@
 package proxymw
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -287,4 +289,20 @@ func writeAPIError(w http.ResponseWriter, errorMessage string, code int) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("error: Failed to encode error response: %v", err)
 	}
+}
+
+func DupRequest(req *http.Request) (*http.Request, error) {
+	clone := req.Clone(req.Context())
+	if req.Body == nil {
+		return clone, nil
+	}
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Body = io.NopCloser(bytes.NewReader(body))
+	clone.Body = io.NopCloser(bytes.NewBuffer(body))
+	return clone, nil
 }

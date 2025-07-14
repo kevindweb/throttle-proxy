@@ -60,6 +60,11 @@ func queryFromRequest(rr Request) (intermediateQuery, error) {
 		return intermediateQuery{}, errors.New("nil HTTP request when parsing promql")
 	}
 
+	req, err := DupRequest(req)
+	if err != nil {
+		return intermediateQuery{}, fmt.Errorf("error duplicating request for parsing: %w", err)
+	}
+
 	if req.URL == nil {
 		return intermediateQuery{}, errors.New("nil URL when parsing promql")
 	}

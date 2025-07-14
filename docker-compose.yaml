@@ -27,6 +27,7 @@ services:
       -bp-query-name=up_jobs
       -bp-warn=100
       -bp-emergency=200
+      -enable-low-cost-bypass
     ports:
       - 7777:7777
       - 7776:7776
