@@ -75,36 +75,91 @@ func ParseConfigFlags() (Config, error) {
 	flags.StringVar(&configFile, "config-file", "", "Path to proxy configuration file")
 
 	// Server settings
-	flags.StringVar(&cfg.InsecureListenAddress, "insecure-listen-address", "", "HTTP proxy server listen address")
-	flags.StringVar(&cfg.InternalListenAddress, "internal-listen-address", "", "Internal metrics server listen address")
+	flags.StringVar(
+		&cfg.InsecureListenAddress,
+		"insecure-listen-address",
+		"",
+		"HTTP proxy server listen address",
+	)
+	flags.StringVar(
+		&cfg.InternalListenAddress,
+		"internal-listen-address",
+		"",
+		"Internal metrics server listen address",
+	)
 	flags.DurationVar(&cfg.ReadTimeout, "proxy-read-timeout", 5*time.Minute, "HTTP read timeout")
 	flags.DurationVar(&cfg.WriteTimeout, "proxy-write-timeout", 5*time.Minute, "HTTP write timeout")
 	flags.StringVar(&cfg.Upstream, "upstream", "", "Upstream URL to proxy to")
 
 	// Feature flags
-	flags.BoolVar(&cfg.ProxyConfig.EnableCriticality, "enable-criticality", false, "Enable criticality header processing")
+	flags.BoolVar(
+		&cfg.ProxyConfig.EnableCriticality,
+		"enable-criticality",
+		false,
+		"Enable criticality header processing",
+	)
 	flags.BoolVar(&cfg.ProxyConfig.EnableJitter, "enable-jitter", false, "Enable request jitter")
-	flags.DurationVar(&cfg.ProxyConfig.JitterDelay, "jitter-delay", 0, "Random jitter delay duration")
-	flags.BoolVar(&cfg.ProxyConfig.EnableObserver, "enable-observer", false, "Enable middleware metrics collection")
+	flags.DurationVar(
+		&cfg.ProxyConfig.JitterDelay,
+		"jitter-delay",
+		0,
+		"Random jitter delay duration",
+	)
+	flags.BoolVar(
+		&cfg.ProxyConfig.EnableObserver,
+		"enable-observer",
+		false,
+		"Enable middleware metrics collection",
+	)
 
 	// Blocker settings
-	flags.BoolVar(&cfg.ProxyConfig.EnableBlocker, "enable-blocker", false, "Enable http header request blocking")
-	flags.Var(&blockPatterns, "block-pattern", "Header with regex matcher to block. Ex. `X-user-agent=service-to-block.*`")
+	flags.BoolVar(
+		&cfg.ProxyConfig.EnableBlocker,
+		"enable-blocker",
+		false,
+		"Enable http header request blocking",
+	)
+	flags.Var(
+		&blockPatterns,
+		"block-pattern",
+		"Header with regex matcher to block. Ex. `X-user-agent=service-to-block.*`",
+	)
 
 	// Backpressure settings
 	bp := &cfg.ProxyConfig.BackpressureConfig
-	flags.BoolVar(&bp.EnableBackpressure, "enable-bp", false, "Enable backpressure-based throttling")
+	flags.BoolVar(
+		&bp.EnableBackpressure,
+		"enable-bp",
+		false,
+		"Enable backpressure-based throttling",
+	)
 	flags.IntVar(&bp.CongestionWindowMin, "bp-min-window", 0, "Minimum concurrent query limit")
 	flags.IntVar(&bp.CongestionWindowMax, "bp-max-window", 0, "Maximum concurrent query limit")
-	flags.StringVar(&bp.BackpressureMonitoringURL, "bp-monitoring-url", "", "Backpressure metrics endpoint")
+	flags.StringVar(
+		&bp.BackpressureMonitoringURL,
+		"bp-monitoring-url",
+		"",
+		"Backpressure metrics endpoint",
+	)
 	flags.Var(&bpQueries, "bp-query", "PromQL query for downstream failures")
 	flags.Var(&bpQueryNames, "bp-query-name", "Human-readable name for backpressure query")
 	flags.Var(&bpWarnThresholds, "bp-warn", "Warning threshold for throttling")
 	flags.Var(&bpEmergencyThresholds, "bp-emergency", "Emergency threshold for maximum throttling")
+	flags.BoolVar(
+		&bp.EnableLowCostBypass,
+		"enable-low-cost-bypass",
+		false,
+		"Enable low-cost realtime PromQL to bypass backpressure",
+	)
 
 	// Path settings
 	flags.StringVar(&proxyPaths, "proxy-paths", "", "Comma-separated list of paths to proxy")
-	flags.StringVar(&passthroughPaths, "passthrough-paths", "", "Comma-separated list of paths to pass through")
+	flags.StringVar(
+		&passthroughPaths,
+		"passthrough-paths",
+		"",
+		"Comma-separated list of paths to pass through",
+	)
 
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		return Config{}, err
