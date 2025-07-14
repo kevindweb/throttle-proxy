@@ -27,7 +27,7 @@ def simulate_error() -> bool:
     return random.random() < ERROR_RATE  # noqa: S311 # not crypto
 
 
-@app.route("/api/data", methods=["GET"])
+@app.route("/api/v1/query", methods=["GET", "POST"])
 def get_data() -> tuple[Any, int]:
     simulate_latency()
 

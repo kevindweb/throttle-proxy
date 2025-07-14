@@ -16,7 +16,7 @@ import requests
 class TrafficGeneratorConfig:
     """Configuration for the traffic generator."""
 
-    url: str = "http://localhost:7777/api/data"
+    url: str = "http://localhost:7777/api/v1/query"
     headers: dict[str, str] = field(default_factory=dict)
     min_delay: float = 0.01
     max_delay: float = 1.0
@@ -73,7 +73,15 @@ class TrafficGenerator:
             time.sleep(jitter)
 
             headers = self.config.headers
-            response = requests.get(self.config.url, headers=headers, timeout=200)
+            response = requests.post(
+                self.config.url,
+                headers=headers,
+                timeout=200,
+                data={
+                    "query": "up",
+                    "time": "1752512529",
+                },
+            )
         except Exception as e:
             return f"Request {request_id} failed: {e}"
         else:
