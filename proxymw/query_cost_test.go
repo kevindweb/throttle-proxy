@@ -110,7 +110,7 @@ func TestQueryCost(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "negative step duration",
+			name: "formatted timestamp",
 			request: &Mocker{
 				RequestFunc: func() *http.Request {
 					return &http.Request{
@@ -118,15 +118,16 @@ func TestQueryCost(t *testing.T) {
 						Method: http.MethodPost,
 						Form: url.Values{
 							"query": []string{"sum"},
-							"start": []string{"1"},
-							"end":   []string{"2"},
-							"step":  []string{"-53"},
+							"start": []string{"2024-07-16T12:47:00Z"},
+							"end":   []string{"2024-07-16T12:48:00Z"},
+							"step":  []string{"2"},
 						},
 						Body: io.NopCloser(strings.NewReader("")),
 					}
 				},
 			},
-			wantErr: true,
+			wantCost: ObjectStorageThreshold,
+			wantErr:  false,
 		},
 		{
 			name: "invalid range GET time throws error",

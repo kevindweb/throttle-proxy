@@ -78,8 +78,8 @@ class TrafficGenerator:
                 headers=headers,
                 timeout=200,
                 data={
-                    "query": "up",
-                    "time": "1752512529",
+                    "query": "avg_over_time(up[7d])",
+                    "time": "2025-07-16T12:47:00Z",
                 },
             )
         except Exception as e:
