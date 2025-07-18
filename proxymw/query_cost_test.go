@@ -174,6 +174,41 @@ func TestQueryCost(t *testing.T) {
 			wantErr:  false,
 		},
 		{
+			name: "default range query fields",
+			request: &Mocker{
+				RequestFunc: func() *http.Request {
+					return &http.Request{
+						URL:    parseURL(t, "http://localhost/api/v1/query_range"),
+						Method: http.MethodPost,
+						Form: url.Values{
+							"query": []string{"sum(rate(errors[5m]))"},
+						},
+						Body: io.NopCloser(strings.NewReader("")),
+					}
+				},
+			},
+			wantCost: 0,
+			wantErr:  false,
+		},
+		{
+			name: "default instant query timestamp to time.Now",
+			request: &Mocker{
+				RequestFunc: func() *http.Request {
+					return &http.Request{
+						URL:    parseURL(t, "http://localhost/api/v1/query"),
+						Method: http.MethodPost,
+						Form: url.Values{
+							"query": []string{"rate(errors[7d])"},
+							"time":  []string{""},
+						},
+						Body: io.NopCloser(strings.NewReader("")),
+					}
+				},
+			},
+			wantCost: ObjectStorageThreshold,
+			wantErr:  false,
+		},
+		{
 			name: "2 minutes ago is not costly",
 			request: &Mocker{
 				RequestFunc: func() *http.Request {

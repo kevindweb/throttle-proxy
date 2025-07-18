@@ -15,6 +15,7 @@ import (
 )
 
 const ObjectStorageThreshold = 100
+const DefaultRangeStep = time.Second * 30
 
 type intermediateQuery struct {
 	query string
@@ -107,17 +108,18 @@ func queryFromRange(req *http.Request) (intermediateQuery, error) {
 }
 
 func parseRequestArguments(query string, start string, end string, step string) (intermediateQuery, error) {
-	startTime, err := parseTime(start)
+	defaultTime := time.Now().UTC()
+	startTime, err := parseDefaultTime(start, defaultTime)
 	if err != nil {
 		return intermediateQuery{}, fmt.Errorf("error parsing start time %v", err)
 	}
 
-	endTime, err := parseTime(end)
+	endTime, err := parseDefaultTime(end, defaultTime)
 	if err != nil {
 		return intermediateQuery{}, fmt.Errorf("error parsing end time %v", err)
 	}
 
-	stepDuration, err := parseDuration(step)
+	stepDuration, err := parseDefaultDuration(step, DefaultRangeStep)
 	if err != nil {
 		return intermediateQuery{}, fmt.Errorf("error parsing step %v", err)
 	}
@@ -130,6 +132,13 @@ func parseRequestArguments(query string, start string, end string, step string) 
 	}, nil
 }
 
+func parseDefaultTime(s string, d time.Time) (time.Time, error) {
+	if s != "" {
+		return parseTime(s)
+	}
+	return d, nil
+}
+
 func parseTime(s string) (time.Time, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
 		s, ns := math.Modf(t)
@@ -140,6 +149,13 @@ func parseTime(s string) (time.Time, error) {
 		return t, nil
 	}
 	return time.Time{}, fmt.Errorf("cannot parse %q to a valid timestamp", s)
+}
+
+func parseDefaultDuration(s string, d time.Duration) (time.Duration, error) {
+	if s != "" {
+		return parseDuration(s)
+	}
+	return d, nil
 }
 
 func parseDuration(s string) (time.Duration, error) {
