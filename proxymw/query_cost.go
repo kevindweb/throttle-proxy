@@ -48,7 +48,13 @@ func QueryCost(rr Request) (int, error) {
 		// Thanos defaults
 		LookbackDelta: 5 * time.Minute,
 	}
-	min, _ := logicalplan.NewFromAST(expr, qOpts, planOpts).MinMaxTime(qOpts)
+
+	plan, err := logicalplan.NewFromAST(expr, qOpts, planOpts)
+	if err != nil {
+		return 0, err
+	}
+
+	min, _ := plan.MinMaxTime(qOpts)
 	twoHoursAgo := time.Now().UTC().Add(-time.Hour * 2).UnixMilli()
 	if min < twoHoursAgo {
 		return ObjectStorageThreshold, nil
@@ -108,18 +114,17 @@ func queryFromRange(req *http.Request) (intermediateQuery, error) {
 }
 
 func parseRequestArguments(query string, start string, end string, step string) (intermediateQuery, error) {
-	defaultTime := time.Now().UTC()
-	startTime, err := parseDefaultTime(start, defaultTime)
+	startTime, err := parseTime(start)
 	if err != nil {
 		return intermediateQuery{}, fmt.Errorf("error parsing start time %v", err)
 	}
 
-	endTime, err := parseDefaultTime(end, defaultTime)
+	endTime, err := parseTime(end)
 	if err != nil {
 		return intermediateQuery{}, fmt.Errorf("error parsing end time %v", err)
 	}
 
-	stepDuration, err := parseDefaultDuration(step, DefaultRangeStep)
+	stepDuration, err := parseDuration(step)
 	if err != nil {
 		return intermediateQuery{}, fmt.Errorf("error parsing step %v", err)
 	}
@@ -132,13 +137,6 @@ func parseRequestArguments(query string, start string, end string, step string) 
 	}, nil
 }
 
-func parseDefaultTime(s string, d time.Time) (time.Time, error) {
-	if s != "" {
-		return parseTime(s)
-	}
-	return d, nil
-}
-
 func parseTime(s string) (time.Time, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {
 		s, ns := math.Modf(t)
@@ -149,13 +147,6 @@ func parseTime(s string) (time.Time, error) {
 		return t, nil
 	}
 	return time.Time{}, fmt.Errorf("cannot parse %q to a valid timestamp", s)
-}
-
-func parseDefaultDuration(s string, d time.Duration) (time.Duration, error) {
-	if s != "" {
-		return parseDuration(s)
-	}
-	return d, nil
 }
 
 func parseDuration(s string) (time.Duration, error) {
