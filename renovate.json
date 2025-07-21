@@ -9,7 +9,7 @@
         "schedule:weekly",
         ":dependencyDashboard"
     ],
-    "baseBranches": [
+    "baseBranchPatterns": [
         "main"
     ],
     "prConcurrentLimit": 3,
