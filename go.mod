@@ -9,7 +9,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.65.1-0.20250703115700-7f8b2a0d32d3
-	github.com/prometheus/prometheus v0.304.3-0.20250708181613-d8c921804e87
+	github.com/prometheus/prometheus v0.305.0
 	github.com/stretchr/testify v1.10.0
 	github.com/thanos-io/promql-engine v0.0.0-20250711160436-eb186b2cf537
 	go.uber.org/automaxprocs v1.6.0
