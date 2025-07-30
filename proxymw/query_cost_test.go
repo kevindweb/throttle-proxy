@@ -245,6 +245,24 @@ func TestQueryCost(t *testing.T) {
 			wantCost: ObjectStorageThreshold,
 			wantErr:  false,
 		},
+		{
+			name: "within range and lookback delta unset",
+			request: &Mocker{
+				RequestFunc: func() *http.Request {
+					return &http.Request{
+						URL:    parseURL(t, "http://localhost/api/v1/query"),
+						Method: http.MethodPost,
+						Form: url.Values{
+							"query": []string{"max_over_time(count(up)[1m:])"},
+							"time":  []string{timeAgo(time.Minute)},
+						},
+						Body: io.NopCloser(strings.NewReader("")),
+					}
+				},
+			},
+			wantCost: 0,
+			wantErr:  false,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
