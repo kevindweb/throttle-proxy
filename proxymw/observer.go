@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -96,7 +97,7 @@ func (o *Observer) executeNext(rr Request) error {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				errc <- fmt.Errorf("panic calling Next: %v", r)
+				errc <- fmt.Errorf("panic calling Next: %v. Stack trace: %s", r, string(debug.Stack()))
 			}
 			close(errc)
 		}()

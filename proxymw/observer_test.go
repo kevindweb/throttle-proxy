@@ -181,7 +181,7 @@ func TestObserverNextError(t *testing.T) {
 			if err != nil {
 				errStr = err.Error()
 			}
-			require.Equal(t, tt.err, errStr)
+			require.Contains(t, errStr, tt.err)
 			tt.check(t, tt.observer)
 		})
 	}
