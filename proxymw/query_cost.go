@@ -29,6 +29,8 @@ func LowCostRequest(rr Request) (bool, error) {
 	return cost < ObjectStorageThreshold, err
 }
 
+const ThanosLookbackDelta = 5 * time.Minute
+
 func QueryCost(rr Request) (int, error) {
 	q, err := queryFromRequest(rr)
 	if err != nil {
@@ -46,7 +48,10 @@ func QueryCost(rr Request) (int, error) {
 		End:   q.end,
 		Step:  q.step,
 		// Thanos defaults
-		LookbackDelta: 5 * time.Minute,
+		LookbackDelta: ThanosLookbackDelta,
+		NoStepSubqueryIntervalFn: func(d time.Duration) time.Duration {
+			return ThanosLookbackDelta
+		},
 	}
 
 	plan, err := logicalplan.NewFromAST(expr, qOpts, planOpts)
