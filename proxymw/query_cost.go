@@ -102,6 +102,10 @@ func queryFromInstant(req *http.Request) (intermediateQuery, error) {
 
 	query := req.Form.Get("query")
 	ts := req.Form.Get("time")
+	if ts == "" {
+		ts = strconv.FormatInt(time.Now().UTC().Unix(), 10)
+	}
+
 	return parseRequestArguments(query, ts, ts, "0")
 }
 
