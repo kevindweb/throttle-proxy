@@ -263,6 +263,24 @@ func TestQueryCost(t *testing.T) {
 			wantCost: 0,
 			wantErr:  false,
 		},
+		{
+			name: "instant query timestamp not set",
+			request: &Mocker{
+				RequestFunc: func() *http.Request {
+					return &http.Request{
+						URL:    parseURL(t, "http://localhost/api/v1/query"),
+						Method: http.MethodPost,
+						Form: url.Values{
+							"query": []string{"sum(up)"},
+							"time":  []string{},
+						},
+						Body: io.NopCloser(strings.NewReader("")),
+					}
+				},
+			},
+			wantCost: 0,
+			wantErr:  false,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
