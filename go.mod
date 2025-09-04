@@ -8,7 +8,7 @@ require (
 	github.com/metalmatze/signal v0.0.0-20210307161603-1c9aa721a97a
 	github.com/prometheus/client_golang v1.23.0
 	github.com/prometheus/client_model v0.6.2
-	github.com/prometheus/common v0.65.1-0.20250711183725-0e1982f10d4c
+	github.com/prometheus/common v0.66.0
 	github.com/prometheus/prometheus v0.306.0-rc.0
 	github.com/stretchr/testify v1.11.1
 	github.com/thanos-io/promql-engine v0.0.0-20250731151205-1a520ea6a26d
@@ -38,6 +38,6 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
-	google.golang.org/protobuf v1.36.7 // indirect
+	google.golang.org/protobuf v1.36.8 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
