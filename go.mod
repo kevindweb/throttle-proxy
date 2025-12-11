@@ -2,7 +2,7 @@ module github.com/kevindweb/throttle-proxy
 
 go 1.24.0
 
-toolchain go1.24.5
+toolchain go1.25.5
 
 require (
 	github.com/metalmatze/signal v0.0.0-20210307161603-1c9aa721a97a
@@ -11,7 +11,7 @@ require (
 	github.com/prometheus/common v0.67.4
 	github.com/prometheus/prometheus v0.308.0
 	github.com/stretchr/testify v1.11.1
-	github.com/thanos-io/promql-engine v0.0.0-20250731151205-1a520ea6a26d
+	github.com/thanos-io/promql-engine v0.0.0-20251211101306-4124d3f75a0f
 	go.uber.org/automaxprocs v1.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
